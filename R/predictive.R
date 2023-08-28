@@ -28,6 +28,26 @@ clean_tokenize_text <- function(corpus) {
     tm_map(content_transformer(str_to_lower)) %>% 
     tm_map(removeWords, c("google",stopwords("en"))) %>% 
     tm_map(stripWhitespace) %>% 
-    tm_map(content_transformer(lemmatize_strings))
-
+    tm_map(content_transformer(lemmatize_strings)) 
+  
+  #remove empty documents
+  
+  clean_corpus_filt <- tm_filter(clean_corpus, FUN = function(x)  { return(nchar(stripWhitespace(x$content)[[1]]) > 0) } )
+  
+  #create TDM matrix with unigrams/bigrams
+  corp_dtm <- DocumentTermMatrix(clean_corpus_filt,
+                                 control = list(
+                                   tokenize = function(x) { 
+                                     NGramTokenizer(x, 
+                                                    Weka_control(min=1, max=1)) }
+                                 )
+  ) 
+  
+  
+  return(corp_dtm)
 }
+
+
+#apply clean tokenize function to pos and neg corpus
+pos_rev_dtm <- clean_tokenize_text(pos_rev_corpus) 
+neg_rev_dtm <- clean_tokenize_text(neg_rev_corpus)
