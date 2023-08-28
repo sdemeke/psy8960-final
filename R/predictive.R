@@ -51,3 +51,21 @@ clean_tokenize_text <- function(corpus) {
 #apply clean tokenize function to pos and neg corpus
 pos_rev_dtm <- clean_tokenize_text(pos_rev_corpus) 
 neg_rev_dtm <- clean_tokenize_text(neg_rev_corpus)
+
+
+#Sentiment Analysis
+
+pos_rev_dtm_tidy <- tidy(pos_rev_dtm) %>% 
+  inner_join(get_sentiments("bing"),by = c("term"="word")) 
+
+
+
+
+
+
+
+
+
+
+
+
