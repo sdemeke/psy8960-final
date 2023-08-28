@@ -55,13 +55,25 @@ neg_rev_dtm <- clean_tokenize_text(neg_rev_corpus)
 
 #Sentiment Analysis
 
-pos_rev_dtm_tidy <- tidy(pos_rev_dtm) %>% 
-  inner_join(get_sentiments("bing"),by = c("term"="word")) 
+pos_rev_dtm_tidy <- tidy(pos_rev_dtm) %>% #tidy organizes terms by document and includes count column for each term 
+  inner_join(get_sentiments("bing"),by = c("term"="word")) %>% #assigns 'positive' or 'negative' to any terms that exist in bing dictionary
+   mutate(sentiment = recode( #we want numeric sentiment values for predictive model so i assign +1/-1 as positive and negative sentiment
+    sentiment, "positive" = 1, "negative" = -1
+  )) %>% 
+  group_by(document) %>% 
+  mutate(total_count = sum(count),#within each document/review, sum up total count of terms
+         word_freqp = count/total_count) %>% #for each term, compute its proportion of the total count (repeated words have higher frequency)
+  summarise(wt_pos_sentiment = mean(word_freqp*sentiment)) %>% #weight the sentiment of each term by its frequency and average all weighted sentiments by document
+  ungroup() 
+#mean(pos_rev_dtm_tidy$wt_pos_sentiment) #total mean=.49
 
-
-
-
-
+#sentiment function
+compute_sentiment <- function(tdm_obj) {
+  
+  
+  
+  
+}
 
 
 
