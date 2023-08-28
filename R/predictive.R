@@ -14,7 +14,7 @@ library(doParallel)
 #Load combined data file
 full_dat <- read_rds("../rds/combined_dataset.rds")
 
-#Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
+### Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
 
 #create corpus objects for positive and negative reivews
 pos_rev_corpus <- VCorpus(VectorSource(full_dat$PosReview))
@@ -98,6 +98,16 @@ full_dat_tidy <- full_dat %>%
 #side effect of sentiment analysis using document term matrix where context can get lost
 
 
+### Run classification ML model to predict attrition 
+
+#create datasets with and without textual data
+
+full_dat_tidy_text <- full_dat_tidy %>% 
+  select(-c(PosReview,NegReview)) #ignore original non-processed columns
+
+
+full_dat_tidy_no_text <- full_dat_tidy_text %>% 
+  select(-c(PosReviewSentWt,NegReviweSentWt)) #remove sentiment scores
 
 
 
