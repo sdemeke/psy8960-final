@@ -122,6 +122,14 @@ prop.table(table(full_dat_tidy$Attrition))
 #function to create test/train data and run ml models
 getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
   
+  #testing
+  dat <- full_dat_tidy_text
+  ml_model <- "glmnet"
+  
+  dat <- dat %>% 
+    select(-c(EmployeeID, Over18))
+  #don't want employee id as predictor
+  #over18 is a factor with no variance (only 1 level) not excluded by preprocess so excluded here
   
   set.seed(24)
   
@@ -149,22 +157,24 @@ getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) 
     trControl = myControl
   )
   
+  
   predicted <- predict(model, test_data, na.action = na.pass)
-  # 
-  # results <- tibble(
-  #   model_name = ml_model,
-  #   cv_rsq = max( model[["results"]][["RMSE"]]),
-  #   ho_rsq = cor(predicted, test_data$workhours)^2,
-  #   no_seconds = difftime(end,start,units="secs")
-  # )
+
+  confusionMatrix(predicted, test_data$Attrition)
+  
+  
+  results <- tibble(
+    model_name = ml_model,
+    cv_acc = max( model[["results"]][["Accuracy"]]),
+    cv_kappa = max(model[["results"]][["Kappa"]]),
+    ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
+    )
   
   return(model)
   
   
 }
 
-#questions
-#is above removing zero var cols like Over 18?
-#should i also remove employee id (exclude as predictor)
+
 
 
