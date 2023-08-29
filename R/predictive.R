@@ -23,6 +23,9 @@ neg_rev_corpus <- VCorpus(VectorSource(full_dat$NegReview))
 #function to clean and process corpus objects
 clean_tokenize_text <- function(corpus) {
   
+  #testing
+  #corpus <- pos_rev_corpus
+  
   clean_corpus <- corpus %>% 
     tm_map(content_transformer(replace_abbreviation)) %>% 
     tm_map(content_transformer(replace_contraction)) %>%
@@ -33,39 +36,78 @@ clean_tokenize_text <- function(corpus) {
     tm_map(stripWhitespace) %>% 
     tm_map(content_transformer(lemmatize_strings)) 
   
+  
+  
+  # compare_them <- function(og_corp,proc_corp,random_index) {
+  #   
+  #   list(
+  #     random_index,
+  #     "Original Corpus Sample" =  og_corp[[random_index]]$content,
+  #     
+  #     "Cleaned Corpus Sample" = proc_corp[[random_index]]$content
+  #   )
+  # }
+  # 
+  # compare_them(og_corp = pos_rev_corpus,
+  #              proc_corp = clean_corpus,
+  #              random_index = sample(1:length(pos_rev_corpus),1))
+  # #looks good
+  
+  
+  
   #remove empty documents
   
   clean_corpus_filt <- tm_filter(clean_corpus, FUN = function(x)  { return(nchar(stripWhitespace(x$content)[[1]]) > 0) } )
   
-  #create DTM matrix with unigrams
+  return(clean_corpus_filt)
+}
+
+
+create_bigram_dtm <- function(clean_corpus_filt) {
+
+  #create DTM matrix with unigrams and bigrams
   corp_dtm <- DocumentTermMatrix(clean_corpus_filt,
+                                 control = list(
+                                   tokenize = function(x) { 
+                                     NGramTokenizer(x, 
+                                                    Weka_control(min=1, max=2)) }
+                                 )
+  ) 
+  
+  #as_tibble(as.matrix(corp_dtm)) %>% view() #terms look ok, not too many weird so preprocessing steps are fine
+  
+  #if using bigram approach, need to slim
+  corp_slim_dtm <- removeSparseTerms(corp_dtm, .99) #166 terms
+  #for 99.7% of documents a token must be zero for it to be removed from matrix
+  
+  ##use above dtm - join to original df and apply to machine learning from raw word count
+  #for use in ml, applying removeSparseTerms more harshly
+  #as_tibble(as.matrix(corp_slim_dtm)) %>% View
+  
+
+return(corp_slim_dtm)
+}
+
+create_tdm_sentiment <- function(clean_corpus_filt) {
+#prepare for sentiment analysis
+
+#unigrams only
+  corp_tdm <- TermDocumentMatrix(clean_corpus_filt,
                                  control = list(
                                    tokenize = function(x) { 
                                      NGramTokenizer(x, 
                                                     Weka_control(min=1, max=1)) }
                                  )
   ) 
+  #still need to slim here? yes but being less harsh because inner join with sentiment dictionary removes many terms anyway
+  corp_slim_tdm <- removeSparseTerms(corp_tdm, .997) #341 terms
   
   
-  return(corp_dtm)
-}
-
-
-#apply clean tokenize function to pos and neg corpus
-pos_rev_dtm <- clean_tokenize_text(pos_rev_corpus) 
-neg_rev_dtm <- clean_tokenize_text(neg_rev_corpus)
-
-
-#Sentiment Analysis
-
-#sentiment function
-compute_sentiment <- function(dtm_obj) {
-  
-  tidy_rev_dtm <- tidy(dtm_obj) %>% #tidy organizes terms by document and includes count column for each term 
-    inner_join(get_sentiments("bing"),by = c("term"="word")) %>% #assigns 'positive' or 'negative' to any terms that exist in bing dictionary
-    mutate(sentiment = recode( #we want numeric sentiment values for predictive model so i assign +1/-1 as positive and negative sentiment
-      sentiment, "positive" = 1, "negative" = -1
-    )) %>% 
+sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and includes count column for each term 
+  inner_join(get_sentiments("bing"),by = c("term"="word")) %>% #bing and afinn result in similar number of remaining terms. 
+  mutate(sentiment = recode( #we want numeric sentiment values for predictive model so i assign +1/-1 as positive and negative sentiment
+    sentiment, "positive" = 1, "negative" = -1
+  )) %>% 
     group_by(document) %>% 
     mutate(total_count = sum(count),#within each document/review, sum up total count of terms
            word_freqp = count/total_count) %>% #for each term, compute its proportion of the total count (repeated words have higher frequency)
@@ -74,32 +116,45 @@ compute_sentiment <- function(dtm_obj) {
     mutate(EmployeeID = as.numeric(document), .keep ="unused") #document is same as employee id, rename for easy merge later with full dataset
   
   
-  return(tidy_rev_dtm)
+  return(sentiment_df)
   
 }
 
 
-#compute sentiments for positive review tdm
-pos_rev_dtm_tidy <- compute_sentiment(dtm_obj = pos_rev_dtm) %>% 
+#Step 1-pply clean tokenize function to pos and neg corpus
+pos_rev_clean_corpus <- clean_tokenize_text(pos_rev_corpus) 
+neg_rev_clean_corpus <- clean_tokenize_text(neg_rev_corpus)
+
+
+#Step 2A-create dtm. should these be combined??
+pos_rev_bigram_dtm <- create_bigram_dtm(pos_rev_clean_corpus)
+neg_rev_bigram_dtm <- create_bigram_dtm(neg_rev_clean_corpus)
+
+
+#Step 2B - compute sentiments positive and negative reviews and combine to overall sentiment score
+pos_rev_sentiment_df <- create_tdm_sentiment(pos_rev_clean_corpus) %>% 
   rename(PosReviewSentWt = wt_sentiment)
-#mean(pos_rev_dtm_tidy$wt_sentiment) #total mean=.49
+#mean(pos_rev_sentiment_df$PosReviewSentWt) #total mean=.54
 
 #repeat for negative reviews
-neg_rev_dtm_tidy <- compute_sentiment(dtm_obj = neg_rev_dtm) %>% 
+neg_rev_sentiment_df <- create_tdm_sentiment(neg_rev_clean_corpus) %>% 
   rename(NegReviweSentWt = wt_sentiment)
-#mean(neg_rev_dtm_tidy$wt_sentiment) #total mean=0.00
+#mean(neg_rev_sentiment_df$NegReviweSentWt) #total mean=0.05, not negative but much lower than positive mean
 
 #merge processed text columns with full data
 full_dat_tidy <- full_dat %>% 
-  left_join(pos_rev_dtm_tidy) %>% 
-  left_join(neg_rev_dtm_tidy) 
+  left_join(pos_rev_sentiment_df) %>% 
+  left_join(neg_rev_sentiment_df) %>% 
+  mutate(OverallSentiment = PosReviewSentWt + NegReviweSentWt)
 #comparing original text to the final sentiment values
 #for some of the positive reviews, neg sentiment assigned. ex "cost is never a concern"
 #side effect of sentiment analysis using document term matrix where context can get lost
-#can i just use the dtm matrix as predictors?
+
 
 
 ### Run classification ML model to predict attrition 
+
+###DUMMY CODING CATEG PREDS??
 
 #create datasets with and without textual data
 
