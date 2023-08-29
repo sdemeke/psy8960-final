@@ -37,7 +37,7 @@ clean_tokenize_text <- function(corpus) {
   
   clean_corpus_filt <- tm_filter(clean_corpus, FUN = function(x)  { return(nchar(stripWhitespace(x$content)[[1]]) > 0) } )
   
-  #create TDM matrix with unigrams/bigrams
+  #create DTM matrix with unigrams
   corp_dtm <- DocumentTermMatrix(clean_corpus_filt,
                                  control = list(
                                    tokenize = function(x) { 
@@ -96,6 +96,7 @@ full_dat_tidy <- full_dat %>%
 #comparing original text to the final sentiment values
 #for some of the positive reviews, neg sentiment assigned. ex "cost is never a concern"
 #side effect of sentiment analysis using document term matrix where context can get lost
+#can i just use the dtm matrix as predictors?
 
 
 ### Run classification ML model to predict attrition 
@@ -110,7 +111,60 @@ full_dat_tidy_no_text <- full_dat_tidy_text %>%
   select(-c(PosReviewSentWt,NegReviweSentWt)) #remove sentiment scores
 
 
+#frequency of turnover in observed data
+prop.table(table(full_dat_tidy$Attrition))
+# No       Yes 
+# 0.8386219 0.1613781 
+
+#Visualization?
 
 
+#function to create test/train data and run ml models
+getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
+  
+  
+  set.seed(24)
+  
+  no_folds <- 10
+  cv_index <- createDataPartition(dat$Attrition, p = 0.75, list = FALSE)
+  train_data <- dat[cv_index,] 
+  test_data <- dat[-cv_index,] 
+  
+  fold_indices <- createFolds(train_data$Attrition, k = no_folds)
+  
+  myControl <- trainControl(
+    method = "cv", 
+    number = no_folds, 
+    verboseIter = TRUE,
+    indexOut = fold_indices 
+  )
+  
+  model <- train(
+    Attrition~.,
+    data = train_data, 
+    metric = "Accuracy", #for classif models
+    method = ml_model,
+    preProcess = c("center","scale","nzv","medianImpute"), 
+    na.action = na.pass,
+    trControl = myControl
+  )
+  
+  predicted <- predict(model, test_data, na.action = na.pass)
+  # 
+  # results <- tibble(
+  #   model_name = ml_model,
+  #   cv_rsq = max( model[["results"]][["RMSE"]]),
+  #   ho_rsq = cor(predicted, test_data$workhours)^2,
+  #   no_seconds = difftime(end,start,units="secs")
+  # )
+  
+  return(model)
+  
+  
+}
+
+#questions
+#is above removing zero var cols like Over 18?
+#should i also remove employee id (exclude as predictor)
 
 
