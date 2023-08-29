@@ -12,13 +12,16 @@ library(parallel)
 library(doParallel)
 
 #Load combined data file
-full_dat <- read_rds("../rds/combined_dataset.rds")
+full_dat <- read_rds("../rds/combined_dataset.rds") %>% 
+#create new column of combined positive and negative review for dtm 
+  mutate(OverallReview = paste(PosReview, NegReview, sep = " ") )
 
 ### Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
 
 #create corpus objects for positive and negative reivews
 pos_rev_corpus <- VCorpus(VectorSource(full_dat$PosReview))
 neg_rev_corpus <- VCorpus(VectorSource(full_dat$NegReview))
+overall_rev_corpus <- VCorpus(VectorSource(full_dat$OverallReview))
 
 #function to clean and process corpus objects
 clean_tokenize_text <- function(corpus) {
@@ -63,8 +66,11 @@ clean_tokenize_text <- function(corpus) {
 }
 
 
-create_bigram_dtm <- function(clean_corpus_filt) {
+create_bigram_dtm <- function(pos_reviews,neg_reviews) {
 
+  #combine two satisfaction columns
+  
+  
   #create DTM matrix with unigrams and bigrams
   corp_dtm <- DocumentTermMatrix(clean_corpus_filt,
                                  control = list(
@@ -84,8 +90,15 @@ create_bigram_dtm <- function(clean_corpus_filt) {
   #for use in ml, applying removeSparseTerms more harshly
   #as_tibble(as.matrix(corp_slim_dtm)) %>% View
   
+  #convert to df for easy join with original dataset
+  corp_slim_dtm_mat <- as.matrix(corp_slim_dtm)
+  
+  #to merge with og, create new employeeid col where document=employee id
+  corp_slim_dtm_df <-  data.frame(
+    EmployeeID = as.numeric(rownames(corp_slim_dtm_mat)), corp_slim_dtm_mat
+  )
 
-return(corp_slim_dtm)
+return(corp_slim_dtm_df)
 }
 
 create_tdm_sentiment <- function(clean_corpus_filt) {
@@ -127,9 +140,11 @@ neg_rev_clean_corpus <- clean_tokenize_text(neg_rev_corpus)
 
 
 #Step 2A-create dtm. should these be combined??
-pos_rev_bigram_dtm <- create_bigram_dtm(pos_rev_clean_corpus)
-neg_rev_bigram_dtm <- create_bigram_dtm(neg_rev_clean_corpus)
-
+pos_rev_bigram_dtm_df <- create_bigram_dtm(pos_rev_clean_corpus) 
+#166 terms
+neg_rev_bigram_dtm_df <- create_bigram_dtm(neg_rev_clean_corpus)
+#182 terms
+#total 348 terms THERE MAY BE REPETITION THOUGH...GO BACK AND UNITE POS AND NEG REVIEWS INTO ONE VAR?
 
 #Step 2B - compute sentiments positive and negative reviews and combine to overall sentiment score
 pos_rev_sentiment_df <- create_tdm_sentiment(pos_rev_clean_corpus) %>% 
@@ -145,7 +160,10 @@ neg_rev_sentiment_df <- create_tdm_sentiment(neg_rev_clean_corpus) %>%
 full_dat_tidy <- full_dat %>% 
   left_join(pos_rev_sentiment_df) %>% 
   left_join(neg_rev_sentiment_df) %>% 
-  mutate(OverallSentiment = PosReviewSentWt + NegReviweSentWt)
+  #mutate(OverallSentiment = PosReviewSentWt + NegReviweSentWt) %>% 
+  #not sure whether to use pos and neg as predictors (they don't really correlate) or overall score as 1 pred
+  left_join(pos_rev_bigram_dtm_df) %>% 
+  left_join(neg_rev_bigram_dtm_df) 
 #comparing original text to the final sentiment values
 #for some of the positive reviews, neg sentiment assigned. ex "cost is never a concern"
 #side effect of sentiment analysis using document term matrix where context can get lost
