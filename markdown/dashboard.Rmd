@@ -23,9 +23,16 @@ full_dat <- read_rds("../rds/combined_dataset.rds")
 skinny_dat <- full_dat %>% 
   select(EmployeeID, MonthlyIncome, Attrition, JobSatisfaction,
          Department, EducationField, Gender, JobRole) %>% 
-   saveRDS("../shiny/final_shiny_dat.RDS")
+   saveRDS("../shiny/people_dashboard/final_shiny_dat.RDS")
 
 
 ```
 
 
+
+In console 
+> library(rsconnect)
+> rsconnect::setAccountInfo(name='sdemeke', token='74B7FDE39775CF5443EF9C632829F3DA', secret='0gmweLocppD0paHwx8WbIDkX40YHsvLbu3UraWaI')
+> getwd()
+[1] "C:/Users/demek004/Documents/SP23_PSY8960_DataScience/psy8960-final/R"
+> deployApp("../shiny/people_dashboard")
