@@ -10,30 +10,6 @@ library(rstatix)
 #Load combined data file from Part 1
 full_dat <- read_rds("../rds/combined_dataset.rds")
 
-### Visualization
-
-#make this more apa
-
-#H1 - Relationship between monthly pay and performance rating
-full_dat %>% ggplot(aes(x=MonthlyIncome, y=PerformanceRating)) +
- # geom_point(position = "jitter", alpha = 0.7)
-  geom_point(position = position_jitter(width = 1,seed = 24)) +
-  geom_smooth(method = "lm", se = FALSE, color = "darkgrey") +
-  labs(
-    title = "Figure 1. Relationship Between Monthly Pay and Performance Ratings",
-    x = "Monthly Income",
-    y = "Performance Ratings"
-  ) +
-  theme_minimal() 
-
-
-#H2 - Monthly pay differs by department
-full_dat %>% ggplot(aes(x=Department, y=MonthlyIncome)) +
-  geom_boxplot()
-
-#add titles, anything else?
-
-
 ### Analysis
 
 #H1 - Relationship between monthly pay and performance rating
@@ -51,5 +27,41 @@ h2_test <- full_dat %>%
 
 
 #H3 - Tenure can be predicted from relationship satisfaction. This link is moderated by gender.
+h3_test <- lm(YearsAtCompany ~ RelationshipSatisfaction*Gender, data = full_dat)
+
+#use tidy() and glance() to make pretty
+
+
+### Visualization
+
+#make this more apa
+
+#H1 - Relationship between monthly pay and performance rating
+full_dat %>% ggplot(aes(x=MonthlyIncome, y=PerformanceRating)) +
+  # geom_point(position = "jitter", alpha = 0.7)
+  geom_point(position = position_jitter(width = .1,seed = 24)) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgrey") +
+  labs(
+    title = "Figure 1. Relationship Between Monthly Pay and Performance Ratings",
+    x = "Monthly Income",
+    y = "Performance Ratings"
+  ) +
+  theme_minimal() 
+
+
+#H2 - Monthly pay differs by department
+full_dat %>% ggplot(aes(x=Department, y=MonthlyIncome)) +
+  geom_boxplot()
+
+#add titles, anything else?
+
+#H3 - Tenure can be predicted from relationship satisfaction. This link is moderated by gender.
+
+full_dat %>% ggplot(aes(x=RelationshipSatisfaction, y=YearsAtCompany)) +
+  # geom_point(position = "jitter", alpha = 0.7)
+  geom_point(position = position_jitter(width = .8, height= 1,seed = 24)) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgrey")
+
+
 
 
