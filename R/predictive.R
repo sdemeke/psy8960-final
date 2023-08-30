@@ -10,7 +10,6 @@ library(RWeka)
 library(caret)
 library(parallel)
 library(doParallel)
-library(tictoc)
 
 
 ### Data Import and Cleaning
@@ -60,7 +59,7 @@ create_bigram_dtm <- function(clean_corpus_filt) {
   #as_tibble(as.matrix(corp_dtm)) %>% view() #terms look ok, not too many weird so preprocessing steps are fine
   
   #if using bigram approach, need to slim
-  corp_slim_dtm <- removeSparseTerms(corp_dtm, .98) 
+  corp_slim_dtm <- removeSparseTerms(corp_dtm, .99) 
   #for 98% of documents a token must be zero for it to be removed from matrix
   #use above dtm - join to original df and apply to machine learning from raw word count
   #for use in ml, applying removeSparseTerms more harshly
@@ -88,7 +87,7 @@ create_tdm_sentiment <- function(clean_corpus_filt) {
                                  )
   ) 
   #still need to slim here? yes but being less harsh because inner join with sentiment dictionary removes many terms anyway
-  corp_slim_tdm <- removeSparseTerms(corp_tdm, .997) #341 terms
+  corp_slim_tdm <- removeSparseTerms(corp_tdm, .997) #341 terms WITH .997
   
   
 sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and includes count column for each term 
@@ -291,12 +290,12 @@ stopCluster(local_cluster)
 registerDoSEQ()
 
 #summarize results
-summary(resamples(model_txt_list))
-summary(resamples(model_no_txt_list))
-
-#Visualize
-dotplot(resamples(model_no_txt_list))
-dotplot(resamples(model_txt_list))
+# summary(resamples(model_txt_list))
+# summary(resamples(model_no_txt_list))
+# 
+# #Visualize
+# dotplot(resamples(model_no_txt_list))
+# dotplot(resamples(model_txt_list))
 #for both, ranger and zgbtree > by accuracy and kappa
 
 
@@ -305,35 +304,103 @@ dotplot(resamples(model_txt_list))
 get_ml_summary_results <- function(ml_model, test_data, model_time) {
  
   #test
-  ml_model <- model_txt_list[["glm"]]
-  model_time <- time_model_txt_glm
+  # ml_model <- model_txt_list[["glmnet"]]
+  # model_time <- time_model_txt_glmnet
   
   # str_remove(round(
   #   resample_sum$statistics$Rsquared[,"Mean"],2
   # ),"^0")
 
+  predicted_values <- predict(ml_model, test_data, na.action = na.pass)
+  predicted_values <- factor(predicted_values, levels = c("Yes","No"))
+  expected_values <- test_data$Attrition
+  expected_values <- factor(expected_values, levels = c("Yes","No"))
+  
+  conf_mat <- confusionMatrix(data=predicted_values, reference=expected_values)
+  # > conf_mat$overall[1]
+  # Accuracy 
+  # 0.8446866 
+  # > conf_mat$overall[2]
+  # Kappa 
+  # 0.35849
+  
+  #for some reason, sensitivity is using "No" as yes. try releveling, yes that works
+  # > conf_mat$byClass[1]
+  # Sensitivity 
+  # 0.3898305 
+  # > conf_mat$byClass[2]
+  # Specificity 
+  # 0.9318182
+  
+  
  results <- tibble(
     model_name = ml_model$method,
-    cv_acc = mean(ml_model[["results"]][["Accuracy"]]),
-    cv_kappa = mean(ml_model[["results"]][["Kappa"]]),
-    
+    cv_acc = str_remove(round(mean(ml_model[["results"]][["Accuracy"]]), 2), "^0"),
+    #cv_kappa = mean(ml_model[["results"]][["Kappa"]])
+    ho_acc = str_remove(round(conf_mat$overall[1],  2), "^0"),
+   # ho_kappa = conf_mat$overall[2],
+    sensitivity_yes_att = str_remove(round(conf_mat$byClass[1], 2), "^0"),
+    specificity_no_att = str_remove(round(conf_mat$byClass[2], 2), "^0"),
     computation_time = paste(str_remove(round(model_time,2),"^0"),"seconds")
   )
    
-   # predicted <- predict(model, test_data, na.action = na.pass)
-   # 
-   # confusionMatrix(predicted, test_data$Attrition)
-   # 
-   # 
-   # results <- tibble(
-   #   model_name = ml_model,
-   #   cv_acc = max( model[["results"]][["Accuracy"]]),
-   #   cv_kappa = max(model[["results"]][["Kappa"]]),
-   #   ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
-   #   )
-  
+
   return(results)
   
 }
 
-lapply(model_txt_list, get_ml_summary_results)
+final_results_txt <- bind_rows(
+  get_ml_summary_results(ml_model= model_txt_glm, test_data = test_data, model_time = time_model_txt_glm),
+  get_ml_summary_results(ml_model= model_txt_glmnet,test_data = test_data, model_time = time_model_txt_glmnet),
+  get_ml_summary_results(ml_model= model_txt_ranger,test_data = test_data, model_time = time_model_txt_ranger),
+  get_ml_summary_results(ml_model= model_txt_xgbTree, test_data = test_data,model_time = time_model_txt_xgbTree),
+  
+)
+
+final_results_no_txt <- bind_rows(
+  get_ml_summary_results(ml_model= model_no_txt_glm, test_data = test_data, model_time = time_model_no_txt_glm),
+  get_ml_summary_results(ml_model= model_no_txt_glmnet,test_data = test_data, model_time = time_model_no_txt_glmnet),
+  get_ml_summary_results(ml_model= model_no_txt_ranger,test_data = test_data, model_time = time_model_no_txt_ranger),
+  get_ml_summary_results(ml_model= model_no_txt_xgbTree, test_data = test_data,model_time = time_model_no_txt_xgbTree),
+  
+)
+# > final_results_no_txt
+# # A tibble: 4 × 6
+# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
+# <chr>      <chr>  <chr>  <chr>               <chr>             
+#   1 glm        .9     .86    .44                 .94               
+# 2 glmnet     .9     .86    .37                 .95               
+# 3 ranger     .97    .86    .34                 .96               
+# 4 xgbTree    .94    .87    .41                 .96               
+# # ℹ 1 more variable: computation_time <chr>
+# > final_results_txt
+# # A tibble: 4 × 6
+# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
+# <chr>      <chr>  <chr>  <chr>               <chr>             
+#   1 glm        .9     .83    .42                 .91               
+# 2 glmnet     .9     .84    .39                 .93               
+# 3 ranger     .96    .85    .32                 .95               
+# 4 xgbTree    .94    .86    .44                 .94               
+# # ℹ 1 more variable: computation_time <chr>
+
+##TRIED EVEN HARSHER SPARSITY, .95 for both overall dtm and sentiment tdms
+#EVEN WORSE, GO BACK TO ORIGINAL SPARSITIES
+# > final_results_txt
+# # A tibble: 4 × 6
+# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
+# <chr>      <chr>  <chr>  <chr>               <chr>             
+#   1 glm       .9     .83    .39                 .91               
+# 2 glmnet     .9     .84    .37                 .93               
+# 3 ranger     .96    .85    .29                 .96               
+# 4 xgbTree    .94    .88    .51                 .95               
+# # ℹ 1 more variable: computation_time <chr>
+
+### Answers to Questions
+
+#What characteristics of how you created the final model likely made the biggest impact in maximizing its performance? How do you know? Be sure to interpret specific numbers in the table you just created.
+
+#What is the incremental predictive accuracy gained by including text data in your model versus not including text data? 
+
+## table comparing accuracy of selected final model with and without text-derived predictors
+
+
