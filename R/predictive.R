@@ -178,17 +178,30 @@ full_dat_ml_text <- full_dat_tidy_dummy_final #225 cols, 224 predictors with dum
 
 ### Analysis
 
+## Create test and train datasets to use for all models
+
+#create 75/25 train test split
+set.seed(24)
+cv_index <- createDataPartition(full_dat_ml_text$Attrition, p = 0.75, list = FALSE)
+
+#with text
+train_data_txt <- full_dat_ml_text[cv_index,] 
+
+#without text
+train_data_no_txt <- full_dat_ml_no_text[cv_index,] 
+
+test_data <- full_dat_ml_text[-cv_index,]
+#test will be the same, can leave as is since predictor cols wont be used?
+
+
 ## Run ML models across both datasets using multiple models to compare
 
 #function to create test/train data and run ml models
-train_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
+train_ml_model <- function(train_data, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
   
   set.seed(24)
   
   no_folds <- 10
-  cv_index <- createDataPartition(dat$Attrition, p = 0.75, list = FALSE)
-  train_data <- dat[cv_index,] 
-  test_data <- dat[-cv_index,] 
   
   fold_indices <- createFolds(train_data$Attrition, k = no_folds)
   
@@ -209,21 +222,7 @@ train_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")
     trControl = myControl
   )
   
-  
-  # predicted <- predict(model, test_data, na.action = na.pass)
-  # 
-  # confusionMatrix(predicted, test_data$Attrition)
-  # 
-  # 
-  # results <- tibble(
-  #   model_name = ml_model,
-  #   cv_acc = max( model[["results"]][["Accuracy"]]),
-  #   cv_kappa = max(model[["results"]][["Kappa"]]),
-  #   ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
-  #   )
-  
-  return(model)
-  
+    return(model)
   
 }
 
@@ -234,44 +233,44 @@ registerDoParallel(local_cluster)
 
 #train models using text-based predictors
 
-model_txt_glm <- train_ml_model(dat = full_dat_ml_text, ml_model = "glm")
+model_txt_glm <- train_ml_model(dat = train_data_txt, ml_model = "glm")
 # Warning message:
 #   glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
-model_txt_glmnet <- train_ml_model(dat = full_dat_ml_text, ml_model = "glmnet")
+model_txt_glmnet <- train_ml_model(dat = train_data_txt, ml_model = "glmnet")
 # Warning message:
 #   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
 #                             There were missing values in resampled performance measures.
 
-model_txt_ranger <- train_ml_model(dat = full_dat_ml_text, ml_model = "ranger")
+model_txt_ranger <- train_ml_model(dat = train_data_txt, ml_model = "ranger")
 
 
-model_txt_xgbTree <- train_ml_model(dat = full_dat_ml_text, ml_model = "xgbTree")
+model_txt_xgbTree <- train_ml_model(dat = train_data_txt, ml_model = "xgbTree")
 
-model_txt_list <- list(model_txt_glm,
-                       model_txt_glmnet,
-                       model_txt_ranger,
-                       model_txt_xgbTree)
+model_txt_list <- list("glm" = model_txt_glm,
+                       "glmnet" = model_txt_glmnet,
+                      "ranger" =  model_txt_ranger,
+                       "xgbTree" = model_txt_xgbTree)
 
 #train model excluding text-based predictors
-model_no_txt_glm <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "glm")
+model_no_txt_glm <- train_ml_model(dat = train_data_no_txt, ml_model = "glm")
 # Warning message:
 #   glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
-model_no_txt_glmnet <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "glmnet")
+model_no_txt_glmnet <- train_ml_model(dat = train_data_no_txt, ml_model = "glmnet")
 # Warning message:
 #   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
 #                             There were missing values in resampled performance measures.
 
-model_no_txt_ranger <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "ranger")
+model_no_txt_ranger <- train_ml_model(dat = train_data_no_txt, ml_model = "ranger")
 
 
-model_no_txt_xgbTree <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "xgbTree")
+model_no_txt_xgbTree <- train_ml_model(dat = train_data_no_txt, ml_model = "xgbTree")
 
-model_no_txt_list <- list(model_no_txt_glm,
-                       model_no_txt_glmnet,
-                       model_no_txt_ranger,
-                       model_no_txt_xgbTree)
+model_no_txt_list <- list("glm" = model_no_txt_glm,
+                          "glmnet" = model_no_txt_glmnet,
+                          "ranger" =  model_no_txt_ranger,
+                          "xgbTree" = model_no_txt_xgbTree)
 
 #turn off parallelization
 stopCluster(local_cluster)
@@ -285,5 +284,32 @@ dotplot(resamples(model_txt_list))
 
 ### Publication
 
+get_ml_summary_results <- function(ml_model, test_data) {
+ 
+  #test
+  ml_model <- model_txt_list[[1]]
+  
+   results <- tibble(
+    model_name = ml_model$method,
+    cv_acc = max( ml_model[["results"]][["Accuracy"]]),
+    cv_kappa = max(ml_model[["results"]][["Kappa"]]),
+    
+  )
+   
+   # predicted <- predict(model, test_data, na.action = na.pass)
+   # 
+   # confusionMatrix(predicted, test_data$Attrition)
+   # 
+   # 
+   # results <- tibble(
+   #   model_name = ml_model,
+   #   cv_acc = max( model[["results"]][["Accuracy"]]),
+   #   cv_kappa = max(model[["results"]][["Kappa"]]),
+   #   ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
+   #   )
+  
+  return(results)
+  
+}
 
-
+lapply(model_txt_list, get_ml_summary_results)
