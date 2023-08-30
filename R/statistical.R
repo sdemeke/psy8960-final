@@ -26,6 +26,14 @@ full_dat %>% ggplot(aes(x=MonthlyIncome, y=PerformanceRating)) +
   ) +
   theme_minimal() 
 
+
+#H2 - Monthly pay differs by department
+full_dat %>% ggplot(aes(x=Department, y=MonthlyIncome)) +
+  geom_boxplot()
+
+#add titles, anything else?
+
+
 ### Analysis
 
 #H1 - Relationship between monthly pay and performance rating
@@ -35,6 +43,11 @@ full_dat %>%
 
 
 #H2 - Monthly pay differs by department
+h2_test <- full_dat %>% 
+  anova_test(dv = MonthlyIncome, wid = EmployeeID, between = Department,
+             detailed = T)
+
+
 
 
 #H3 - Tenure can be predicted from relationship satisfaction. This link is moderated by gender.
