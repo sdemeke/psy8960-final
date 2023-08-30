@@ -115,9 +115,9 @@ paste0("The correlation between monthly pay and performance rating is r = ",
 #ANOVA summary table
 h2_aov_tbl <- tibble(
   "Predictor" = c(h2_test$Effect, "Error"),
-  "Sum of Squares" = c(h2_test$SSn,h2_test$SSd),
+  "Sum of Squares" = trimws(format(c(h2_test$SSn,h2_test$SSd), nsmall = 2L)),
   "df" = c(h2_test$DFn,h2_test$DFd),
-  "Mean Square" = c(h2_test$SSn/h2_test$DFn,h2_test$SSd/h2_test$DFd),
+  "Mean Square" = trimws(format(c(h2_test$SSn/h2_test$DFn,h2_test$SSd/h2_test$DFd), nsmall = 2L)),
   "F" = c(custom_decimal(h2_test$`F`), ""),
   "p" = c(custom_decimal(h2_test$p), "")
   
