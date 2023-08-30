@@ -1,11 +1,32 @@
 ---
-title: "PSY 8960 Final Project"
+title: "PSY 8960 Final Project - Part 4"
 author: "Saron Demeke"
 date: "`r Sys.Date()`"
 output: 
   html_document:
     df_print: paged
 knit: (function(input, ...) { 
-        rmarkdown::render(input, output_file='../out/fina_dashboard.html') })
+        rmarkdown::render(input, output_file='../markdown/final_dashboard.html') })
 ---
   
+# Script Settings and Resources
+```{r section1, message=F}
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+library(tidyverse)
+```  
+  
+
+# Data Import and Cleaning
+```{r section2}
+full_dat <- read_rds("../rds/combined_dataset.rds")
+
+skinny_dat <- full_dat %>% 
+  select(EmployeeID, MonthlyIncome, Attrition, JobSatisfaction,
+         Department, EducationField, Gender, JobRole) #%>% 
+  # saveRDS("../shiny_final/shiny_input.RDS")
+
+
+```
+
+
+
