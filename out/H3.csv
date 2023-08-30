@@ -1,0 +1,5 @@
+Effect,Estimate (b),t statistic,p
+(Intercept),6.24,9.28,.00
+Relationship Satisfaction,.37,1.58,.11
+Gender(Male),.78,.88,.38
+Relationship Satisfaction x Gender(Male),-.43,-1.42,.16

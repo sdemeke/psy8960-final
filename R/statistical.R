@@ -30,7 +30,6 @@ h2_post_test <- full_dat %>%
 #Test of H3 - Tenure can be predicted from relationship satisfaction. This link is moderated by gender.
 h3_test <- lm(YearsAtCompany ~ RelationshipSatisfaction*Gender, data = full_dat)
 
-#use tidy() and glance() to make pretty
 
 
 ### Visualization
@@ -47,12 +46,12 @@ h3_test <- lm(YearsAtCompany ~ RelationshipSatisfaction*Gender, data = full_dat)
       y = "Performance Ratings"
     ) +
     theme_apa() + #from {jtools}, removes gridlines, sets font sizes to align with APA
-    theme(plot.title = element_text(size = 12))  #title was too far to the right, cut off 
+    theme(plot.title = element_text(size = 12))  
   ) %>%  
   ggsave(filename="../fig/H1.png", units="px", width=1920, height=1080)
 
 
-#Visualization of H2 - Monthly pay differs by department
+#Visualization of H2 
 (ggplot(data = full_dat,
         aes(x=Department, y=MonthlyIncome)) +
   geom_boxplot() +
@@ -68,12 +67,23 @@ h3_test <- lm(YearsAtCompany ~ RelationshipSatisfaction*Gender, data = full_dat)
 
 
 
-#H3 - Tenure can be predicted from relationship satisfaction. This link is moderated by gender.
+#Visualization of H3 
+(ggplot(data = full_dat,
+        aes(x=RelationshipSatisfaction, y=YearsAtCompany,group=Gender, shape = Gender)) +
+    geom_jitter() +
+    geom_smooth(method = "lm", se = FALSE, aes(y = predict(h3_test, full_dat), color = Gender)) +
+    labs(
+      title = "Figure 3. Relationship Between Relationship Satisfaction and Tenure by Gender",
+      x = "Relationship Satisfaction",
+      y = "Tenure (Years at Company)"
+    ) +
+    theme_apa() + #from {jtools}, removes gridlines, sets font sizes to align with APA
+    theme(plot.title = element_text(size = 11))  
+) %>%  
+  ggsave(filename="../fig/H3.png", units="px", width=1920, height=1080)
 
-full_dat %>% ggplot(aes(x=RelationshipSatisfaction, y=YearsAtCompany)) +
-  # geom_point(position = "jitter", alpha = 0.7)
-  geom_point(position = position_jitter(width = .8, height= 1,seed = 24)) +
-  geom_smooth(method = "lm", se = FALSE, color = "darkgrey")
+#the mapping argument allows you to directly specify new y-values - such as the output of a custom linear model
+
 
 
 ### Publication
@@ -88,8 +98,9 @@ custom_decimal <-  function(x){
   }
 
 #H1
-#"The correlation between monthly pay and performance rating is r = -.50, p =.51. This test was not statistically significant."
 
+#Text interpretation:
+#"The correlation between monthly pay and performance rating is r = -.50, p =.51. This test was not statistically significant."
 paste0("The correlation between monthly pay and performance rating is r = ",
       custom_decimal(-0.5),
       ", p =",
@@ -113,13 +124,14 @@ h2_aov_tbl <- tibble(
 ) %>% 
   write_csv("../out/H2.csv")
 
-#table of means and sds by department
+#table of means and sds by department (accompany tukey test results)
 h2_desc_tbl <- full_dat %>% 
   group_by(Department) %>% 
   summarise("M" = mean(MonthlyIncome, na.rm = T), 
             "SD" = sd(MonthlyIncome, na.rm = T))
 
-#text interpretation
+#Text interpretation:
+#"A one-way ANOVA was conducted to compare mean scores of monthly pay by departmental groups. The results in the summary table show that there is a significant difference in monthly income across departments, F(df1 = 2, df2 = 1467) = 3.20, p = .04. A post hoc (Tukey HSD) test revealed a statistically significant difference between the Sales (M = 6959.17, SD = 4058.74) and Research & Development (M = 6281.25, SD = 4895.84) departments. Monthly pay for Sales is higher than income in the R&D group (p = .03)."
 paste0("A one-way ANOVA was conducted to compare mean scores of monthly pay by departmental groups. The results in the summary table show that there is a significant difference in monthly income across departments, F(",
        "df1 = ",h2_test$DFn, ", df2 = ",h2_test$DFd,") = ", custom_decimal(h2_test$`F`),
        ", p = ", custom_decimal(h2_test$p),
@@ -130,3 +142,31 @@ paste0("A one-way ANOVA was conducted to compare mean scores of monthly pay by d
        
   
 )
+
+
+#H3
+
+#table
+h3_test_summary <- as_tibble(summary(h3_test)$coefficients)
+
+h3_reg_table <- tibble(
+  "Effect" = c("(Intercept)","Relationship Satisfaction", "Gender(Male)", "Relationship Satisfaction x Gender(Male)"),
+  "Estimate (b)" = sapply(h3_test_summary$Estimate, custom_decimal),
+  "t statistic" = sapply(h3_test_summary$`t value`, custom_decimal),
+  "p" = sapply(h3_test_summary$`Pr(>|t|)`, custom_decimal)
+) %>% 
+  write_csv("../out/H3.csv")
+
+#Text interpretation:
+#"The main effect of relationship satisfaction on tenure is not statistically significant, b = .37 (p = .11).The hypothesis of a moderating effect of gender on this relationship is not supported, b = -.43 (p = .16)."
+
+paste0("The main effect of relationship satisfaction on tenure is",
+       ifelse(h3_test_summary$`Pr(>|t|)`[2] < .05, " statistically significant", " not statistically significant"),
+       ", b = ",h3_reg_table$`Estimate (b)`[2]," (p = ",h3_reg_table$p[2], ").",
+       "The hypothesis of a moderating effect of gender on this relationship is",
+       ifelse(h3_test_summary$`Pr(>|t|)`[4] < .05, " supported", " not supported"),
+       ", b = ",h3_reg_table$`Estimate (b)`[4]," (p = ",h3_reg_table$p[4], ")."
+       
+  
+)
+
