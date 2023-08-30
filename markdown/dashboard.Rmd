@@ -30,6 +30,9 @@ skinny_dat <- full_dat %>%
 ```
 
 
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+
 
 In console 
 > library(rsconnect)
