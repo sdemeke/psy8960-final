@@ -10,6 +10,7 @@ library(RWeka)
 library(caret)
 library(parallel)
 library(doParallel)
+library(tictoc)
 
 
 ### Data Import and Cleaning
@@ -164,7 +165,7 @@ full_dat_tidy_dummy <- dummyVars(Attrition~., data = full_dat_tidy_ml)
 #update data with dummy vars
 full_dat_tidy_dummy_final <- as_tibble(predict(full_dat_tidy_dummy, newdata = full_dat_tidy_ml))
 #add back outcome var
-full_dat_tidy_dummy_final <- cbind(Attrition = full_dat_tidy_ml$Attrition, full_dat_tidy_dummy_update)
+full_dat_tidy_dummy_final <- cbind(Attrition = full_dat_tidy_ml$Attrition, full_dat_tidy_dummy_final)
 #225 total columns now
 
 ## Create 2 datasets, one with text-based predictors and one without
@@ -231,21 +232,27 @@ train_ml_model <- function(train_data, ml_model =  c("glm","glmnet","ranger","xg
 local_cluster <- makeCluster(detectCores()-1) #7
 registerDoParallel(local_cluster)
 
-#train models using text-based predictors
+#train models using text-based predictors, save computation time
+start <- Sys.time()
+model_txt_glm <- train_ml_model(train_data = train_data_txt, ml_model = "glm")
+end <- Sys.time()
+time_model_txt_glm <- as.numeric(difftime(end,start,units="secs"))
 
-model_txt_glm <- train_ml_model(dat = train_data_txt, ml_model = "glm")
-# Warning message:
-#   glm.fit: fitted probabilities numerically 0 or 1 occurred 
+start <- Sys.time()
+model_txt_glmnet <- train_ml_model(train_data = train_data_txt, ml_model = "glmnet")
+end <- Sys.time()
+time_model_txt_glmnet <- as.numeric(difftime(end,start,units="secs"))
 
-model_txt_glmnet <- train_ml_model(dat = train_data_txt, ml_model = "glmnet")
-# Warning message:
-#   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
-#                             There were missing values in resampled performance measures.
+start <- Sys.time()
+model_txt_ranger <- train_ml_model(train_data = train_data_txt, ml_model = "ranger")
+end <- Sys.time()
+time_model_txt_ranger <- as.numeric(difftime(end,start,units="secs"))
 
-model_txt_ranger <- train_ml_model(dat = train_data_txt, ml_model = "ranger")
+start <- Sys.time()
+model_txt_xgbTree <- train_ml_model(train_data = train_data_txt, ml_model = "xgbTree")
+end <- Sys.time()
+time_model_txt_xgbTree <- as.numeric(difftime(end,start,units="secs"))
 
-
-model_txt_xgbTree <- train_ml_model(dat = train_data_txt, ml_model = "xgbTree")
 
 model_txt_list <- list("glm" = model_txt_glm,
                        "glmnet" = model_txt_glmnet,
@@ -253,28 +260,39 @@ model_txt_list <- list("glm" = model_txt_glm,
                        "xgbTree" = model_txt_xgbTree)
 
 #train model excluding text-based predictors
-model_no_txt_glm <- train_ml_model(dat = train_data_no_txt, ml_model = "glm")
-# Warning message:
-#   glm.fit: fitted probabilities numerically 0 or 1 occurred 
+start <- Sys.time()
+model_no_txt_glm <- train_ml_model(train_data = train_data_no_txt, ml_model = "glm")
+end <- Sys.time()
+time_model_no_txt_glm <- as.numeric(difftime(end,start,units="secs"))
 
-model_no_txt_glmnet <- train_ml_model(dat = train_data_no_txt, ml_model = "glmnet")
-# Warning message:
-#   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
-#                             There were missing values in resampled performance measures.
+start <- Sys.time()
+model_no_txt_glmnet <- train_ml_model(train_data = train_data_no_txt, ml_model = "glmnet")
+end <- Sys.time()
+time_model_no_txt_glmnet <- as.numeric(difftime(end,start,units="secs"))
 
-model_no_txt_ranger <- train_ml_model(dat = train_data_no_txt, ml_model = "ranger")
+start <- Sys.time()
+model_no_txt_ranger <- train_ml_model(train_data = train_data_no_txt, ml_model = "ranger")
+end <- Sys.time()
+time_model_no_txt_ranger <- as.numeric(difftime(end,start,units="secs"))
 
-
-model_no_txt_xgbTree <- train_ml_model(dat = train_data_no_txt, ml_model = "xgbTree")
+start <- Sys.time()
+model_no_txt_xgbTree <- train_ml_model(train_data = train_data_no_txt, ml_model = "xgbTree")
+end <- Sys.time()
+time_model_no_txt_xgbTree <- as.numeric(difftime(end,start,units="secs"))
 
 model_no_txt_list <- list("glm" = model_no_txt_glm,
                           "glmnet" = model_no_txt_glmnet,
                           "ranger" =  model_no_txt_ranger,
                           "xgbTree" = model_no_txt_xgbTree)
 
+
 #turn off parallelization
 stopCluster(local_cluster)
 registerDoSEQ()
+
+#summarize results
+summary(resamples(model_txt_list))
+summary(resamples(model_no_txt_list))
 
 #Visualize
 dotplot(resamples(model_no_txt_list))
@@ -284,16 +302,22 @@ dotplot(resamples(model_txt_list))
 
 ### Publication
 
-get_ml_summary_results <- function(ml_model, test_data) {
+get_ml_summary_results <- function(ml_model, test_data, model_time) {
  
   #test
-  ml_model <- model_txt_list[[1]]
+  ml_model <- model_txt_list[["glm"]]
+  model_time <- time_model_txt_glm
   
-   results <- tibble(
+  # str_remove(round(
+  #   resample_sum$statistics$Rsquared[,"Mean"],2
+  # ),"^0")
+
+ results <- tibble(
     model_name = ml_model$method,
-    cv_acc = max( ml_model[["results"]][["Accuracy"]]),
-    cv_kappa = max(ml_model[["results"]][["Kappa"]]),
+    cv_acc = mean(ml_model[["results"]][["Accuracy"]]),
+    cv_kappa = mean(ml_model[["results"]][["Kappa"]]),
     
+    computation_time = paste(str_remove(round(model_time,2),"^0"),"seconds")
   )
    
    # predicted <- predict(model, test_data, na.action = na.pass)
