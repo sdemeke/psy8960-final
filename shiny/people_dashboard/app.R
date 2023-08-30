@@ -8,6 +8,10 @@
 #
 
 library(shiny)
+library(tidyverse)
+
+#read in saved skinny data
+final_shinydata <- read_rds("../shiny/people_dashboard/final_shiny_dat.RDS") #change to "./.rds" later
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -34,6 +38,7 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+  
 
     output$distPlot <- renderPlot({
         # generate bins based on input$bins from ui.R
