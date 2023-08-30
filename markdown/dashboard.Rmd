@@ -23,6 +23,7 @@ full_dat <- read_rds("../rds/combined_dataset.rds")
 skinny_dat <- full_dat %>% 
   select(EmployeeID, MonthlyIncome, Attrition, JobSatisfaction,
          Department, EducationField, Gender, JobRole) %>% 
+  mutate(Attrition_num = ifelse(Attrition == "Yes", 1, 0), .after = Attrition) %>% 
    saveRDS("../shiny/people_dashboard/final_shiny_dat.RDS")
 
 
@@ -36,3 +37,16 @@ In console
 > getwd()
 [1] "C:/Users/demek004/Documents/SP23_PSY8960_DataScience/psy8960-final/R"
 > deployApp("../shiny/people_dashboard")
+
+
+Using selectInput and checkBoxInput
+checkBoxInput allows multiple selections
+
+
+Output
+When shiny passes input to the output functions, column names are passed as character vectors. We can apply data masking procedure from
+'args_data_masking {rlang}' help file using '.data[[var]]' to pass the input variable as a live data-variable that is readable within the pipe.
+
+
+
+
