@@ -118,8 +118,8 @@ h2_aov_tbl <- tibble(
   "Sum of Squares" = c(h2_test$SSn,h2_test$SSd),
   "df" = c(h2_test$DFn,h2_test$DFd),
   "Mean Square" = c(h2_test$SSn/h2_test$DFn,h2_test$SSd/h2_test$DFd),
-  "F" = c(custom_decimal(h2_test$`F`), " "),
-  "p" = c(custom_decimal(h2_test$p), " ")
+  "F" = c(custom_decimal(h2_test$`F`), ""),
+  "p" = c(custom_decimal(h2_test$p), "")
   
 ) %>% 
   write_csv("../out/H2.csv")
