@@ -26,9 +26,6 @@ overall_rev_corpus <- VCorpus(VectorSource(full_dat$OverallReview))
 #function to clean and process corpus objects
 clean_tokenize_text <- function(corpus) {
   
-  #testing
-  #corpus <- pos_rev_corpus
-  
   clean_corpus <- corpus %>% 
     tm_map(content_transformer(replace_abbreviation)) %>% 
     tm_map(content_transformer(replace_contraction)) %>%
@@ -66,11 +63,8 @@ clean_tokenize_text <- function(corpus) {
 }
 
 
-create_bigram_dtm <- function(pos_reviews,neg_reviews) {
+create_bigram_dtm <- function(clean_corpus_filt) {
 
-  #combine two satisfaction columns
-  
-  
   #create DTM matrix with unigrams and bigrams
   corp_dtm <- DocumentTermMatrix(clean_corpus_filt,
                                  control = list(
@@ -83,8 +77,8 @@ create_bigram_dtm <- function(pos_reviews,neg_reviews) {
   #as_tibble(as.matrix(corp_dtm)) %>% view() #terms look ok, not too many weird so preprocessing steps are fine
   
   #if using bigram approach, need to slim
-  corp_slim_dtm <- removeSparseTerms(corp_dtm, .99) #166 terms
-  #for 99.7% of documents a token must be zero for it to be removed from matrix
+  corp_slim_dtm <- removeSparseTerms(corp_dtm, .98) 
+  #for 98% of documents a token must be zero for it to be removed from matrix
   
   ##use above dtm - join to original df and apply to machine learning from raw word count
   #for use in ml, applying removeSparseTerms more harshly
@@ -134,17 +128,16 @@ sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and in
 }
 
 
-#Step 1-pply clean tokenize function to pos and neg corpus
+#Step 1 - Apply clean tokenize function to pos and neg corpus
 pos_rev_clean_corpus <- clean_tokenize_text(pos_rev_corpus) 
 neg_rev_clean_corpus <- clean_tokenize_text(neg_rev_corpus)
+overall_rev_clean_corpus <- clean_tokenize_text(overall_rev_corpus)
 
 
-#Step 2A-create dtm. should these be combined??
-pos_rev_bigram_dtm_df <- create_bigram_dtm(pos_rev_clean_corpus) 
-#166 terms
-neg_rev_bigram_dtm_df <- create_bigram_dtm(neg_rev_clean_corpus)
-#182 terms
-#total 348 terms THERE MAY BE REPETITION THOUGH...GO BACK AND UNITE POS AND NEG REVIEWS INTO ONE VAR?
+#Step 2A - Create DTM using overall (combined positive and negative)
+overall_rev_bigram_dtm_df <- create_bigram_dtm(overall_rev_clean_corpus) 
+#159 terms using 98% sparsity
+
 
 #Step 2B - compute sentiments positive and negative reviews and combine to overall sentiment score
 pos_rev_sentiment_df <- create_tdm_sentiment(pos_rev_clean_corpus) %>% 
@@ -156,14 +149,14 @@ neg_rev_sentiment_df <- create_tdm_sentiment(neg_rev_clean_corpus) %>%
   rename(NegReviweSentWt = wt_sentiment)
 #mean(neg_rev_sentiment_df$NegReviweSentWt) #total mean=0.05, not negative but much lower than positive mean
 
-#merge processed text columns with full data
+#Step 3 - Add text-based predictors (overall DTM and computed positive and negative sentiment) to original dataset
+
 full_dat_tidy <- full_dat %>% 
-  left_join(pos_rev_sentiment_df) %>% 
-  left_join(neg_rev_sentiment_df) %>% 
+  left_join(pos_rev_sentiment_df, by = "EmployeeID") %>% 
+  left_join(neg_rev_sentiment_df, by = "EmployeeID") %>% 
   #mutate(OverallSentiment = PosReviewSentWt + NegReviweSentWt) %>% 
   #not sure whether to use pos and neg as predictors (they don't really correlate) or overall score as 1 pred
-  left_join(pos_rev_bigram_dtm_df) %>% 
-  left_join(neg_rev_bigram_dtm_df) 
+  left_join(overall_rev_bigram_dtm_df, by = "EmployeeID") 
 #comparing original text to the final sentiment values
 #for some of the positive reviews, neg sentiment assigned. ex "cost is never a concern"
 #side effect of sentiment analysis using document term matrix where context can get lost
@@ -172,37 +165,45 @@ full_dat_tidy <- full_dat %>%
 
 ### Run classification ML model to predict attrition 
 
-###DUMMY CODING CATEG PREDS??
 
-#create datasets with and without textual data
-
-full_dat_tidy_text <- full_dat_tidy %>% 
-  select(-c(PosReview,NegReview)) #ignore original non-processed columns
-
-
-full_dat_tidy_no_text <- full_dat_tidy_text %>% 
-  select(-c(PosReviewSentWt,NegReviweSentWt)) #remove sentiment scores
-
+#Step 4 - create dataset containing only relevant predictors and outcomes and dummy code all categorical
+full_dat_tidy_ml <- full_dat_tidy %>% 
+  select(-c(EmployeeID, Over18, PosReview, NegReview, OverallReview))
+  #employee ID is not a relevant predictor. Over18 is a factor with only 1 level which leads to errors in ML model
+ #also exclude original, unprocessed text data
 
 #frequency of turnover in observed data
-prop.table(table(full_dat_tidy$Attrition))
+prop.table(table(full_dat_tidy_ml$Attrition))
 # No       Yes 
-# 0.8386219 0.1613781 
+# 0.8387755 0.1612245 
 
-#Visualization?
+#For all categorical variables (currently stored as factors), I dummy code them using caret::dummyVars()
+#The outcome, Attrition, can be left as a factor variable 
 
+full_dat_tidy_dummy <- dummyVars(Attrition~., data = full_dat_tidy_ml)
+#update data with dummy vars
+full_dat_tidy_dummy_final <- as_tibble(predict(full_dat_tidy_dummy, newdata = full_dat_tidy_ml))
+#add back outcome var
+full_dat_tidy_dummy_final <- cbind(Attrition = full_dat_tidy_ml$Attrition, full_dat_tidy_dummy_update)
+#225 total columns now
+
+#Step 5 - create 2 datasets, one with text-based predictors and one without
+#exclude all text-based variables 
+full_dat_ml_no_text <- full_dat_tidy_dummy_final %>% #33 cols, 32 predictors
+  select(-c(PosReviewSentWt, NegReviweSentWt, names(overall_rev_bigram_dtm_df)[-1] )) 
+
+#include text-based variables
+full_dat_ml_text <- full_dat_tidy_dummy_final #225 cols, 224 predictors with dummy coded categoricals
+
+
+#Step 6 - run ML models across both datasets using multiple models to compare
 
 #function to create test/train data and run ml models
-getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
+get_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
   
   #testing
   dat <- full_dat_tidy_text
   ml_model <- "glmnet"
-  
-  dat <- dat %>% 
-    select(-c(EmployeeID, Over18))
-  #don't want employee id as predictor
-  #over18 is a factor with no variance (only 1 level) not excluded by preprocess so excluded here
   
   set.seed(24)
   
@@ -223,7 +224,7 @@ getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) 
   model <- train(
     Attrition~.,
     data = train_data, 
-    metric = "Accuracy", #for classif models
+    metric = "Accuracy", #for classification models
     method = ml_model,
     preProcess = c("center","scale","nzv","medianImpute"), 
     na.action = na.pass,
@@ -231,23 +232,21 @@ getMLResults <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) 
   )
   
   
-  predicted <- predict(model, test_data, na.action = na.pass)
-
-  confusionMatrix(predicted, test_data$Attrition)
-  
-  
-  results <- tibble(
-    model_name = ml_model,
-    cv_acc = max( model[["results"]][["Accuracy"]]),
-    cv_kappa = max(model[["results"]][["Kappa"]]),
-    ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
-    )
+  # predicted <- predict(model, test_data, na.action = na.pass)
+  # 
+  # confusionMatrix(predicted, test_data$Attrition)
+  # 
+  # 
+  # results <- tibble(
+  #   model_name = ml_model,
+  #   cv_acc = max( model[["results"]][["Accuracy"]]),
+  #   cv_kappa = max(model[["results"]][["Kappa"]]),
+  #   ho_acc = cor(as.numeric(predicted), as.numeric(test_data$Attrition))^2
+  #   )
   
   return(model)
   
   
 }
-
-
 
 
