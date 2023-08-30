@@ -22,8 +22,8 @@ full_dat <- read_rds("../rds/combined_dataset.rds")
 
 skinny_dat <- full_dat %>% 
   select(EmployeeID, MonthlyIncome, Attrition, JobSatisfaction,
-         Department, EducationField, Gender, JobRole) #%>% 
-  # saveRDS("../shiny_final/shiny_input.RDS")
+         Department, EducationField, Gender, JobRole) %>% 
+   saveRDS("../shiny/final_shiny_dat.RDS")
 
 
 ```
