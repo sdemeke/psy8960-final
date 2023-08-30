@@ -1,4 +1,4 @@
-# Script Settings and Resources
+### Script Settings and Resources
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 library(tidyverse)
 library(tidytext)
@@ -11,12 +11,15 @@ library(caret)
 library(parallel)
 library(doParallel)
 
+
+### Data Import and Cleaning
+
 #Load combined data file
 full_dat <- read_rds("../rds/combined_dataset.rds") %>% 
 #create new column of combined positive and negative review for dtm 
   mutate(OverallReview = paste(PosReview, NegReview, sep = " ") )
 
-### Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
+## Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
 
 #create corpus objects for positive and negative reivews
 pos_rev_corpus <- VCorpus(VectorSource(full_dat$PosReview))
@@ -35,27 +38,6 @@ clean_tokenize_text <- function(corpus) {
     tm_map(removeWords, c("google",stopwords("en"))) %>% 
     tm_map(stripWhitespace) %>% 
     tm_map(content_transformer(lemmatize_strings)) 
-  
-  
-  
-  # compare_them <- function(og_corp,proc_corp,random_index) {
-  #   
-  #   list(
-  #     random_index,
-  #     "Original Corpus Sample" =  og_corp[[random_index]]$content,
-  #     
-  #     "Cleaned Corpus Sample" = proc_corp[[random_index]]$content
-  #   )
-  # }
-  # 
-  # compare_them(og_corp = pos_rev_corpus,
-  #              proc_corp = clean_corpus,
-  #              random_index = sample(1:length(pos_rev_corpus),1))
-  # #looks good
-  
-  
-  
-  #remove empty documents
   
   clean_corpus_filt <- tm_filter(clean_corpus, FUN = function(x)  { return(nchar(stripWhitespace(x$content)[[1]]) > 0) } )
   
@@ -79,11 +61,9 @@ create_bigram_dtm <- function(clean_corpus_filt) {
   #if using bigram approach, need to slim
   corp_slim_dtm <- removeSparseTerms(corp_dtm, .98) 
   #for 98% of documents a token must be zero for it to be removed from matrix
-  
-  ##use above dtm - join to original df and apply to machine learning from raw word count
+  #use above dtm - join to original df and apply to machine learning from raw word count
   #for use in ml, applying removeSparseTerms more harshly
-  #as_tibble(as.matrix(corp_slim_dtm)) %>% View
-  
+
   #convert to df for easy join with original dataset
   corp_slim_dtm_mat <- as.matrix(corp_slim_dtm)
   
@@ -128,18 +108,18 @@ sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and in
 }
 
 
-#Step 1 - Apply clean tokenize function to pos and neg corpus
+## Apply clean tokenize function to pos and neg corpus
 pos_rev_clean_corpus <- clean_tokenize_text(pos_rev_corpus) 
 neg_rev_clean_corpus <- clean_tokenize_text(neg_rev_corpus)
 overall_rev_clean_corpus <- clean_tokenize_text(overall_rev_corpus)
 
 
-#Step 2A - Create DTM using overall (combined positive and negative)
+## Create DTM using overall (combined positive and negative)
 overall_rev_bigram_dtm_df <- create_bigram_dtm(overall_rev_clean_corpus) 
 #159 terms using 98% sparsity
 
 
-#Step 2B - compute sentiments positive and negative reviews and combine to overall sentiment score
+## Compute sentiments positive and negative reviews and combine to overall sentiment score
 pos_rev_sentiment_df <- create_tdm_sentiment(pos_rev_clean_corpus) %>% 
   rename(PosReviewSentWt = wt_sentiment)
 #mean(pos_rev_sentiment_df$PosReviewSentWt) #total mean=.54
@@ -149,7 +129,7 @@ neg_rev_sentiment_df <- create_tdm_sentiment(neg_rev_clean_corpus) %>%
   rename(NegReviweSentWt = wt_sentiment)
 #mean(neg_rev_sentiment_df$NegReviweSentWt) #total mean=0.05, not negative but much lower than positive mean
 
-#Step 3 - Add text-based predictors (overall DTM and computed positive and negative sentiment) to original dataset
+## Add text-based predictors (overall DTM and computed positive and negative sentiment) to original dataset
 
 full_dat_tidy <- full_dat %>% 
   left_join(pos_rev_sentiment_df, by = "EmployeeID") %>% 
@@ -163,10 +143,10 @@ full_dat_tidy <- full_dat %>%
 
 
 
-### Run classification ML model to predict attrition 
+### Run classification ML models to predict attrition 
 
 
-#Step 4 - create dataset containing only relevant predictors and outcomes and dummy code all categorical
+## Create dataset containing only relevant predictors and outcomes and dummy code all categorical
 full_dat_tidy_ml <- full_dat_tidy %>% 
   select(-c(EmployeeID, Over18, PosReview, NegReview, OverallReview))
   #employee ID is not a relevant predictor. Over18 is a factor with only 1 level which leads to errors in ML model
@@ -187,7 +167,7 @@ full_dat_tidy_dummy_final <- as_tibble(predict(full_dat_tidy_dummy, newdata = fu
 full_dat_tidy_dummy_final <- cbind(Attrition = full_dat_tidy_ml$Attrition, full_dat_tidy_dummy_update)
 #225 total columns now
 
-#Step 5 - create 2 datasets, one with text-based predictors and one without
+## Create 2 datasets, one with text-based predictors and one without
 #exclude all text-based variables 
 full_dat_ml_no_text <- full_dat_tidy_dummy_final %>% #33 cols, 32 predictors
   select(-c(PosReviewSentWt, NegReviweSentWt, names(overall_rev_bigram_dtm_df)[-1] )) 
@@ -196,14 +176,12 @@ full_dat_ml_no_text <- full_dat_tidy_dummy_final %>% #33 cols, 32 predictors
 full_dat_ml_text <- full_dat_tidy_dummy_final #225 cols, 224 predictors with dummy coded categoricals
 
 
-#Step 6 - run ML models across both datasets using multiple models to compare
+### Analysis
+
+## Run ML models across both datasets using multiple models to compare
 
 #function to create test/train data and run ml models
-get_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
-  
-  #testing
-  dat <- full_dat_tidy_text
-  ml_model <- "glmnet"
+train_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
   
   set.seed(24)
   
@@ -248,5 +226,64 @@ get_ml_model <- function(dat, ml_model =  c("glm","glmnet","ranger","xgbTree")) 
   
   
 }
+
+
+##Use parallelization
+local_cluster <- makeCluster(detectCores()-1) #7
+registerDoParallel(local_cluster)
+
+#train models using text-based predictors
+
+model_txt_glm <- train_ml_model(dat = full_dat_ml_text, ml_model = "glm")
+# Warning message:
+#   glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
+model_txt_glmnet <- train_ml_model(dat = full_dat_ml_text, ml_model = "glmnet")
+# Warning message:
+#   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
+#                             There were missing values in resampled performance measures.
+
+model_txt_ranger <- train_ml_model(dat = full_dat_ml_text, ml_model = "ranger")
+
+
+model_txt_xgbTree <- train_ml_model(dat = full_dat_ml_text, ml_model = "xgbTree")
+
+model_txt_list <- list(model_txt_glm,
+                       model_txt_glmnet,
+                       model_txt_ranger,
+                       model_txt_xgbTree)
+
+#train model excluding text-based predictors
+model_no_txt_glm <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "glm")
+# Warning message:
+#   glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
+model_no_txt_glmnet <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "glmnet")
+# Warning message:
+#   In nominalTrainWorkflow(x = x, y = y, wts = weights, info = trainInfo,  :
+#                             There were missing values in resampled performance measures.
+
+model_no_txt_ranger <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "ranger")
+
+
+model_no_txt_xgbTree <- train_ml_model(dat = full_dat_ml_no_text, ml_model = "xgbTree")
+
+model_no_txt_list <- list(model_no_txt_glm,
+                       model_no_txt_glmnet,
+                       model_no_txt_ranger,
+                       model_no_txt_xgbTree)
+
+#turn off parallelization
+stopCluster(local_cluster)
+registerDoSEQ()
+
+#Visualize
+dotplot(resamples(model_no_txt_list))
+dotplot(resamples(model_txt_list))
+#for both, ranger and zgbtree > by accuracy and kappa
+
+
+### Publication
+
 
 
