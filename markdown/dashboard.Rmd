@@ -1,0 +1,11 @@
+---
+title: "PSY 8960 Final Project"
+author: "Saron Demeke"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    df_print: paged
+knit: (function(input, ...) { 
+        rmarkdown::render(input, output_file='../out/fina_dashboard.html') })
+---
+  
