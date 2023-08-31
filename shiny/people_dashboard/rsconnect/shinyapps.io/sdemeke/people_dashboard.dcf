@@ -5,7 +5,9 @@ account: sdemeke
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9723457
-bundleId: 7627228
+bundleId: 7628091
 url: https://sdemeke.shinyapps.io/people_dashboard/
-when: 1693425475.78256
-lastSyncTime: 1693425475.78257
+when: 1693448348.68245
+lastSyncTime: 1693448348.68246
+asMultiple: FALSE
+asStatic: FALSE

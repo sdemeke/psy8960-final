@@ -24,13 +24,11 @@ skinny_dat <- full_dat %>%
   select(EmployeeID, MonthlyIncome, Attrition, JobSatisfaction,
          Department, EducationField, Gender, JobRole) %>% 
   mutate(Attrition_num = ifelse(Attrition == "Yes", 1, 0), .after = Attrition) %>% 
-   saveRDS("../shiny/people_dashboard/final_shiny_dat.RDS")
-
-
+  saveRDS("../shiny/people_dashboard/final_shiny_dat.RDS")
 ```
 
 
-To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+To view the shiny app created for this final project, [click here](http://rmarkdown.rstudio.com/authoring_shiny.html).
 
 
 
