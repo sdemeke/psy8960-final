@@ -2,29 +2,28 @@ library(shiny)
 library(tidyverse)
 library(jtools)
 
-#read in saved skinny data
-final_shinydata <- read_rds("./final_shiny_dat.RDS") #change to "./.rds" later
+#read in skinny data
+final_shinydata <- read_rds("./final_shiny_dat.RDS") 
 
-# Define UI for application that draws a histogram
 ui <- fluidPage(
 
     # Application title
     titlePanel("People Dashboard"),
 
-    # Sidebar with a slider input for number of bins 
+    # Sidebar with several selector inputs for outcomes and groups 
     sidebarLayout(
         sidebarPanel(
-        selectInput("outcome","Select Outcome",choices = c("Monthly Pay" = "MonthlyIncome","Turnover Status"="Attrition_num","Overall Satisfaction"="JobSatisfaction"), selected = "Monthly Pay"),
+        selectInput("outcome","Which gender groups do you want to see plotted?",choices = c("Monthly Pay" = "MonthlyIncome","Turnover Status"="Attrition_num","Overall Satisfaction"="JobSatisfaction"), selected = "Monthly Pay"),
         selectInput("gender", "Select gender groups to plot",
                     choices = c("Female","Male", "All"),
                     selected = "All"),
-        selectInput("department", "Which departments do you want to see in plot?",
+        selectInput("department", "Which departments do you want to see plotted?",
                     choices = c("Human Resources","Research & Development", "Sales","All"),
                     selected = "All"),
-        selectInput("educ_field", "Which educational fields do you want to see in plot?",
+        selectInput("educ_field", "Which educational fields do you want to see plotted?",
                     choices = c("Human Resources","Life Sciences", "Marketing","Medical","Other","Technical Degree","All"),
                     selected = "All"),
-        selectInput("job_role", "Which job roles do you want to see in plot?",
+        selectInput("job_role", "Which job roles do you want to see plotted?",
                     choices = c("Healthcare Representative","Human Resources", "Laboratory Technician","Manager",
                                 "Manufacturing Director" ,"Research Director" ,"Research Scientist" ,"Sales Executive" ,
                                 "Sales Representative", "All"),
@@ -53,23 +52,24 @@ server <- function(input, output) {
       filter(if (input$educ_field!="All") EducationField==input$educ_field else TRUE) %>%  
       filter(if (input$job_role!="All") JobRole==input$job_role else TRUE) 
     
-    
+    total_n <- nrow(filtered_shinydata)
     
     if(input$outcome == "MonthlyIncome") {
     filtered_shinydata %>% 
       ggplot(aes(x = MonthlyIncome)) +
       geom_histogram(bins = 30, fill = "grey30") +
-      labs( title = "Distribution of Monthly Income",
-            x = "Monthly Pay", y = "Frequency"
-        
-      ) +
+      labs( title = "Distribution of Monthly Pay",
+            x = "Monthly Pay", y = "Frequency",
+            caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Monthly Pay across all selected groups. Total N = 1470.")) +
       theme_apa()
+      
     } else if (input$outcome == "Attrition_num") {
     filtered_shinydata %>% 
       ggplot(aes(x = Attrition)) +
       geom_bar(width = 0.5, fill = "grey30") +
       labs( title = "Distribution of Turnover Status",
-            x = "Turnover Status", y = "Frequency") +
+            x = "Turnover Status", y = "Frequency",
+            caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Turnover (No coded as 0, Yes coded as 1) across all selected groups. Total N = 1470.")) +
       theme_apa()
         
     } else {
@@ -77,8 +77,9 @@ server <- function(input, output) {
         ggplot(aes(x = JobSatisfaction)) +
         geom_bar(width = 0.5, fill = "grey30") +
         labs( title = "Distribution of Overall Job Satisfaction",
-              x = "Overall Satisfaction", y = "Frequency") +
-        theme_apa()
+              x = "Overall Satisfaction", y = "Frequency",
+              caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Overall Satisfaction across all selected groups. Total N = 1470.")) +
+              theme_apa()
     }
     
     
