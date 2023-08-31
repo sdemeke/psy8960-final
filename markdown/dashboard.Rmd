@@ -17,6 +17,10 @@ library(tidyverse)
   
 
 # Data Import and Cleaning
+
+The skinny dataset selects only the variables required for the shiny app: the three outcome variables and four categories. Employee ID was retained in initial app testing.
+
+To show the mean and standard deviation of turnover status (attrition) in the shiny app, I created a new numerical variable that assigns the associated factor levels of Attrition (Yes = 1, No = 0). 
 ```{r section2}
 full_dat <- read_rds("../rds/combined_dataset.rds")
 
