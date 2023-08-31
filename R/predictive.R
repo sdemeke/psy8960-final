@@ -2,7 +2,7 @@
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 library(tidyverse)
 library(tidytext)
-library(textdata)
+#library(textdata)
 library(tm)
 library(qdap)
 library(textstem)
@@ -14,19 +14,23 @@ library(doParallel)
 
 ### Data Import and Cleaning
 
+#Total process of creating text-derived predictors as input for a classification model predicting attrition from all given variables
+
 #Load combined data file
 full_dat <- read_rds("../rds/combined_dataset.rds") %>% 
-#create new column of combined positive and negative review for dtm 
+#create new column of combined positive and negative review for use in a combined DocumentTermMatrix 
   mutate(OverallReview = paste(PosReview, NegReview, sep = " ") )
 
-## Process text (PosReview and NegReview columns) using sentiment analysis to derive scores for predictive models
+## Part 1 - Creating text-based predictors
+#I chose to process the text data for two purposes 1) create a DocumentTermMatrix of the overall review (positive + negative) and sentiment analysis-derived scores for the positive and negative reviews separately
 
-#create corpus objects for positive and negative reivews
+#create corpus objects for positive, negative, and overall reivews
 pos_rev_corpus <- VCorpus(VectorSource(full_dat$PosReview))
 neg_rev_corpus <- VCorpus(VectorSource(full_dat$NegReview))
 overall_rev_corpus <- VCorpus(VectorSource(full_dat$OverallReview))
 
-#function to clean and process corpus objects
+#custom function to clean and process corpus objects
+#after processing, empty documents are removed from corpus and filtered corpus is returned
 clean_tokenize_text <- function(corpus) {
   
   clean_corpus <- corpus %>% 
@@ -35,7 +39,7 @@ clean_tokenize_text <- function(corpus) {
     tm_map(removeNumbers) %>%  
     tm_map(removePunctuation) %>% 
     tm_map(content_transformer(str_to_lower)) %>% 
-    tm_map(removeWords, c("google",stopwords("en"))) %>% 
+    tm_map(removeWords, stopwords("en")) %>% 
     tm_map(stripWhitespace) %>% 
     tm_map(content_transformer(lemmatize_strings)) 
   
@@ -44,7 +48,11 @@ clean_tokenize_text <- function(corpus) {
   return(clean_corpus_filt)
 }
 
-
+#custom function to create a bigram DocumentTermMatrix from a processed corpus and prepare the DTM to merge with full dataset
+#after creating the DTM, sparse terms are removed. I use a harsher sparsity threshold than in prior assignments because the DTM will be used as predictor in a machine learning model and I don't want unnecessary terms that may increase noise too much to be included 
+#the slim DTM is converted to a matrix for easier joining with the origninal dataset
+#an EmployeeID variable is added to the matrix as future join identifier (employee id is the same as the corpus document identifier stored in rownames of the matrix)
+#slimmed DTM (converted to data frame object) is returned
 create_bigram_dtm <- function(clean_corpus_filt) {
 
   #create DTM matrix with unigrams and bigrams
@@ -56,18 +64,11 @@ create_bigram_dtm <- function(clean_corpus_filt) {
                                  )
   ) 
   
-  #as_tibble(as.matrix(corp_dtm)) %>% view() #terms look ok, not too many weird so preprocessing steps are fine
-  
-  #if using bigram approach, need to slim
-  corp_slim_dtm <- removeSparseTerms(corp_dtm, .99) 
-  #for 98% of documents a token must be zero for it to be removed from matrix
-  #use above dtm - join to original df and apply to machine learning from raw word count
-  #for use in ml, applying removeSparseTerms more harshly
 
-  #convert to df for easy join with original dataset
+  corp_slim_dtm <- removeSparseTerms(corp_dtm, .99) 
+
   corp_slim_dtm_mat <- as.matrix(corp_slim_dtm)
   
-  #to merge with og, create new employeeid col where document=employee id
   corp_slim_dtm_df <-  data.frame(
     EmployeeID = as.numeric(rownames(corp_slim_dtm_mat)), corp_slim_dtm_mat
   )
@@ -75,10 +76,16 @@ create_bigram_dtm <- function(clean_corpus_filt) {
 return(corp_slim_dtm_df)
 }
 
+#custom function to create slim TDM from cleaned corpus, merge with sentiment dictionary, and compute weighted sentiment scores
+#for the sentiment analysis, I create a TermDocumentMatrix instead of DTM so terms are in rows for easier computation of word counts and frequencies
+#this function creates a TDM of only unigrams (sentiment dictionaries are based on words not phrases)
+#a less harsh sparsity threshold is used because only a fraction of the words in the corpora will match with words in the sentiment dictionaries and being too harsh might lead to very few terms leftover
+#the slim DTM is converted to data frame using tidy() which also computes word counts an merged with the Bing sentiment dictionary (this dictionary retained most number of terms) with an inner_join
+#the sentiment values from Bing are characters which are recoded as numeric values ('positive' = 1, 'negative' = -1)
+#within each document, total word count is computed and then the frequency of each term (repeated words have higher frequencies)
+#finally, the sentiment of each term is weighted by its frequency for a final weighted sentiment score averaged across all terms in a document (weighted mean sentiment)
 create_tdm_sentiment <- function(clean_corpus_filt) {
-#prepare for sentiment analysis
 
-#unigrams only
   corp_tdm <- TermDocumentMatrix(clean_corpus_filt,
                                  control = list(
                                    tokenize = function(x) { 
@@ -86,21 +93,20 @@ create_tdm_sentiment <- function(clean_corpus_filt) {
                                                     Weka_control(min=1, max=1)) }
                                  )
   ) 
-  #still need to slim here? yes but being less harsh because inner join with sentiment dictionary removes many terms anyway
-  corp_slim_tdm <- removeSparseTerms(corp_tdm, .997) #341 terms WITH .997
+  corp_slim_tdm <- removeSparseTerms(corp_tdm, .997) 
   
   
-sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and includes count column for each term 
-  inner_join(get_sentiments("bing"),by = c("term"="word")) %>% #bing and afinn result in similar number of remaining terms. 
-  mutate(sentiment = recode( #we want numeric sentiment values for predictive model so i assign +1/-1 as positive and negative sentiment
+sentiment_df <- tidy(corp_slim_tdm) %>%  
+  inner_join(get_sentiments("bing"),by = c("term"="word")) %>% 
+  mutate(sentiment = recode( 
     sentiment, "positive" = 1, "negative" = -1
   )) %>% 
     group_by(document) %>% 
-    mutate(total_count = sum(count),#within each document/review, sum up total count of terms
-           word_freqp = count/total_count) %>% #for each term, compute its proportion of the total count (repeated words have higher frequency)
-    summarise(wt_sentiment = mean(word_freqp*sentiment)) %>% #weight the sentiment of each term by its frequency and average all weighted sentiments by document
+    mutate(total_count = sum(count),
+           word_freqp = count/total_count) %>% 
+    summarise(wt_sentiment = mean(word_freqp*sentiment)) %>% 
     ungroup() %>% 
-    mutate(EmployeeID = as.numeric(document), .keep ="unused") #document is same as employee id, rename for easy merge later with full dataset
+    mutate(EmployeeID = as.numeric(document), .keep ="unused") 
   
   
   return(sentiment_df)
@@ -108,77 +114,78 @@ sentiment_df <- tidy(corp_slim_tdm) %>% #tidy organizes terms by document and in
 }
 
 
-## Apply clean tokenize function to pos and neg corpus
+## Apply clean tokenize function to pos, neg, and overall corpora
 pos_rev_clean_corpus <- clean_tokenize_text(pos_rev_corpus) 
 neg_rev_clean_corpus <- clean_tokenize_text(neg_rev_corpus)
 overall_rev_clean_corpus <- clean_tokenize_text(overall_rev_corpus)
 
 
-## Create DTM using overall (combined positive and negative)
+## Create DTM using overall corpus only (combined positive and negative)
 overall_rev_bigram_dtm_df <- create_bigram_dtm(overall_rev_clean_corpus) 
 #159 terms using 98% sparsity
+#335 using 99
 
-
-## Compute sentiments positive and negative reviews and combine to overall sentiment score
+## Compute weighted mean sentiment scores using positive and negative reviews 
+#mean weighted positive sentiment is .54 which indicates responses to this item were generally positive
 pos_rev_sentiment_df <- create_tdm_sentiment(pos_rev_clean_corpus) %>% 
   rename(PosReviewSentWt = wt_sentiment)
-#mean(pos_rev_sentiment_df$PosReviewSentWt) #total mean=.54
+#mean(pos_rev_sentiment_df$PosReviewSentWt) mean=.54
 
 #repeat for negative reviews
+#mean weighted negative sentiment is .05 which is not negative but much lower than positive mean which indicates these reviews were more negative
+#looking at both pos and neg columns, the limitation of term sentiment analysis is noticeable. Given a TDM was used, the sentiment analysis cannot take into account context around a word
+#for some of the positive review records, a negative value of sentiment is assigned. ex "cost is never a concern"
+#overall, sentiment analysis did the job and the more positive mean for the supposedly positive reviews is supported so I am retaining these variables to use in the classification model as predictors of turnover
 neg_rev_sentiment_df <- create_tdm_sentiment(neg_rev_clean_corpus) %>% 
   rename(NegReviweSentWt = wt_sentiment)
-#mean(neg_rev_sentiment_df$NegReviweSentWt) #total mean=0.05, not negative but much lower than positive mean
+#mean(neg_rev_sentiment_df$NegReviweSentWt) #mean=0.05, not negative but much lower than positive mean
 
-## Add text-based predictors (overall DTM and computed positive and negative sentiment) to original dataset
+## Add text-based predictors (overall DTM and computed positive and negative sentiment) to original dataset using left joins 
 
 full_dat_tidy <- full_dat %>% 
   left_join(pos_rev_sentiment_df, by = "EmployeeID") %>% 
   left_join(neg_rev_sentiment_df, by = "EmployeeID") %>% 
-  #mutate(OverallSentiment = PosReviewSentWt + NegReviweSentWt) %>% 
-  #not sure whether to use pos and neg as predictors (they don't really correlate) or overall score as 1 pred
   left_join(overall_rev_bigram_dtm_df, by = "EmployeeID") 
-#comparing original text to the final sentiment values
-#for some of the positive reviews, neg sentiment assigned. ex "cost is never a concern"
-#side effect of sentiment analysis using document term matrix where context can get lost
 
 
 
-### Run classification ML models to predict attrition 
+## Part 2 - Run classification ML models to predict turnover 
 
 
-## Create dataset containing only relevant predictors and outcomes and dummy code all categorical
+## Create dataset containing only relevant predictors and outcomes and dummy code all categorical variables
+
+#certain variables are removed. e.g., employee ID is not a relevant predictor. Over18 is a factor with only 1 level which leads to errors in ML model
+#also exclude unprocessed text data 
 full_dat_tidy_ml <- full_dat_tidy %>% 
   select(-c(EmployeeID, Over18, PosReview, NegReview, OverallReview))
-  #employee ID is not a relevant predictor. Over18 is a factor with only 1 level which leads to errors in ML model
- #also exclude original, unprocessed text data
+  
 
-#frequency of turnover in observed data
+#frequency of turnover in observed data. overall base rate of attrition is low.
 prop.table(table(full_dat_tidy_ml$Attrition))
 # No       Yes 
 # 0.8387755 0.1612245 
 
 #For all categorical variables (currently stored as factors), I dummy code them using caret::dummyVars()
 #The outcome, Attrition, can be left as a factor variable 
-
+#To dummy code, I use caret function dummyVars() which identifies the non-numeric predictor variables and creates dummy variables
 full_dat_tidy_dummy <- dummyVars(Attrition~., data = full_dat_tidy_ml)
-#update data with dummy vars
+#update dataset with dummy vars
 full_dat_tidy_dummy_final <- as_tibble(predict(full_dat_tidy_dummy, newdata = full_dat_tidy_ml))
-#add back outcome var
+#outcome is dropped from the dummy variable object, add it back
 full_dat_tidy_dummy_final <- cbind(Attrition = full_dat_tidy_ml$Attrition, full_dat_tidy_dummy_final)
-#225 total columns now
 
 ## Create 2 datasets, one with text-based predictors and one without
 #exclude all text-based variables 
-full_dat_ml_no_text <- full_dat_tidy_dummy_final %>% #33 cols, 32 predictors
+full_dat_ml_no_text <- full_dat_tidy_dummy_final %>% 
   select(-c(PosReviewSentWt, NegReviweSentWt, names(overall_rev_bigram_dtm_df)[-1] )) 
 
 #include text-based variables
-full_dat_ml_text <- full_dat_tidy_dummy_final #225 cols, 224 predictors with dummy coded categoricals
+full_dat_ml_text <- full_dat_tidy_dummy_final 
 
 
 ### Analysis
 
-## Create test and train datasets to use for all models
+## Create test and train datasets to use across all models
 
 #create 75/25 train test split
 set.seed(24)
@@ -190,13 +197,15 @@ train_data_txt <- full_dat_ml_text[cv_index,]
 #without text
 train_data_no_txt <- full_dat_ml_no_text[cv_index,] 
 
+#since test is only used to asses holdout accuracy, don't need to create text and no text versions
 test_data <- full_dat_ml_text[-cv_index,]
-#test will be the same, can leave as is since predictor cols wont be used?
 
 
 ## Run ML models across both datasets using multiple models to compare
 
 #function to create test/train data and run ml models
+#uses 10-fold cross-validiation 
+#preprocessing steps remove zero variance variables, impute missing via median of existing data, and standardizes variables
 train_ml_model <- function(train_data, ml_model =  c("glm","glmnet","ranger","xgbTree")) { 
   
   set.seed(24)
@@ -227,11 +236,11 @@ train_ml_model <- function(train_data, ml_model =  c("glm","glmnet","ranger","xg
 }
 
 
-##Use parallelization
-local_cluster <- makeCluster(detectCores()-1) #7
+##Use parallelization to speed up model training for more complex algorithms
+local_cluster <- makeCluster(detectCores()-1) #7 cores on my machine
 registerDoParallel(local_cluster)
 
-#train models using text-based predictors, save computation time
+#train models using text-based predictors, store computation time to be used as one of a few indicators when choosing 'best' model
 start <- Sys.time()
 model_txt_glm <- train_ml_model(train_data = train_data_txt, ml_model = "glm")
 end <- Sys.time()
@@ -253,12 +262,12 @@ end <- Sys.time()
 time_model_txt_xgbTree <- as.numeric(difftime(end,start,units="secs"))
 
 
-model_txt_list <- list("glm" = model_txt_glm,
-                       "glmnet" = model_txt_glmnet,
-                      "ranger" =  model_txt_ranger,
-                       "xgbTree" = model_txt_xgbTree)
+model_txt_list <- list("Generalized Linear Model" = model_txt_glm,
+                       "GLM Elastic Net" = model_txt_glmnet,
+                      "Random Forest" =  model_txt_ranger,
+                       "Extreme Gradient Boosting" = model_txt_xgbTree)
 
-#train model excluding text-based predictors
+#train models excluding text-based predictors
 start <- Sys.time()
 model_no_txt_glm <- train_ml_model(train_data = train_data_no_txt, ml_model = "glm")
 end <- Sys.time()
@@ -279,37 +288,32 @@ model_no_txt_xgbTree <- train_ml_model(train_data = train_data_no_txt, ml_model 
 end <- Sys.time()
 time_model_no_txt_xgbTree <- as.numeric(difftime(end,start,units="secs"))
 
-model_no_txt_list <- list("glm" = model_no_txt_glm,
-                          "glmnet" = model_no_txt_glmnet,
-                          "ranger" =  model_no_txt_ranger,
-                          "xgbTree" = model_no_txt_xgbTree)
+model_no_txt_list <- list("Generalized Linear Model" = model_no_txt_glm,
+                          "GLM Elastic Net" = model_no_txt_glmnet,
+                          "Random Forest" =  model_no_txt_ranger,
+                          "Extreme Gradient Boosting" = model_no_txt_xgbTree)
 
 
 #turn off parallelization
 stopCluster(local_cluster)
 registerDoSEQ()
 
-#summarize results
-# summary(resamples(model_txt_list))
-# summary(resamples(model_no_txt_list))
-# 
-# #Visualize
-# dotplot(resamples(model_no_txt_list))
-# dotplot(resamples(model_txt_list))
-#for both, ranger and zgbtree > by accuracy and kappa
+#take a peek at results and plot accuracies
+#for both text and no text versions, random forest and extreme gradient boost models have increased accuracy
+summary(resamples(model_txt_list))
+summary(resamples(model_no_txt_list))
+dotplot(resamples(model_no_txt_list))
+dotplot(resamples(model_txt_list))
 
 
 ### Publication
 
+#custom function to extract desired indicators of accuracy and other variables across models
+#a confusion matrix (binary 2x2 classification) is created to extract additional indicators of model accuracy beyond kappa and simple accuracy, namely sensitivity and specificity
+#the default way that R assigned levels to Attrition variable led to some confusion with the Sensitivity and Specificity indicators so I releveled it. Now, sensitivity refers to accuracy at predicting Yes events as it should.
+#the final results table shows model name, cross-validated accuracy and holdout values of accuracy, kappa, sensitivity, and specifity. Each model's computation time (note paralellized processing) is also recorded 
 get_ml_summary_results <- function(ml_model, test_data, model_time) {
  
-  #test
-  # ml_model <- model_txt_list[["glmnet"]]
-  # model_time <- time_model_txt_glmnet
-  
-  # str_remove(round(
-  #   resample_sum$statistics$Rsquared[,"Mean"],2
-  # ),"^0")
 
   predicted_values <- predict(ml_model, test_data, na.action = na.pass)
   predicted_values <- factor(predicted_values, levels = c("Yes","No"))
@@ -317,31 +321,16 @@ get_ml_summary_results <- function(ml_model, test_data, model_time) {
   expected_values <- factor(expected_values, levels = c("Yes","No"))
   
   conf_mat <- confusionMatrix(data=predicted_values, reference=expected_values)
-  # > conf_mat$overall[1]
-  # Accuracy 
-  # 0.8446866 
-  # > conf_mat$overall[2]
-  # Kappa 
-  # 0.35849
-  
-  #for some reason, sensitivity is using "No" as yes. try releveling, yes that works
-  # > conf_mat$byClass[1]
-  # Sensitivity 
-  # 0.3898305 
-  # > conf_mat$byClass[2]
-  # Specificity 
-  # 0.9318182
-  
-  
+
  results <- tibble(
-    model_name = ml_model$method,
-    cv_acc = str_remove(round(mean(ml_model[["results"]][["Accuracy"]]), 2), "^0"),
-    #cv_kappa = mean(ml_model[["results"]][["Kappa"]])
-    ho_acc = str_remove(round(conf_mat$overall[1],  2), "^0"),
-   # ho_kappa = conf_mat$overall[2],
-    sensitivity_yes_att = str_remove(round(conf_mat$byClass[1], 2), "^0"),
-    specificity_no_att = str_remove(round(conf_mat$byClass[2], 2), "^0"),
-    computation_time = paste(str_remove(round(model_time,2),"^0"),"seconds")
+    "Model" = ml_model$method,
+    "Cross-validated Accuracy" = str_remove(round(mean(ml_model[["results"]][["Accuracy"]]), 2), "^0"),
+    "Cross-validated kappa" = str_remove(round(mean(ml_model[["results"]][["Kappa"]]),2), "^0"),
+    "Holdout Accuracy" = str_remove(round(conf_mat$overall[1],  2), "^0"),
+    "Holdout kappa" = str_remove(round(conf_mat$overall[2],   2), "^0"),
+    "Sensitivity" = str_remove(round(conf_mat$byClass[1], 2), "^0"),
+    "Specificity" = str_remove(round(conf_mat$byClass[2], 2), "^0"),
+    "Computation time (seconds)" = paste(str_remove(round(model_time,2),"^0"),"seconds")
   )
    
 
@@ -349,13 +338,16 @@ get_ml_summary_results <- function(ml_model, test_data, model_time) {
   
 }
 
+
+#Apply above function to list of text-including and excluding models and save output to csv files
 final_results_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_txt_glm, test_data = test_data, model_time = time_model_txt_glm),
   get_ml_summary_results(ml_model= model_txt_glmnet,test_data = test_data, model_time = time_model_txt_glmnet),
   get_ml_summary_results(ml_model= model_txt_ranger,test_data = test_data, model_time = time_model_txt_ranger),
   get_ml_summary_results(ml_model= model_txt_xgbTree, test_data = test_data,model_time = time_model_txt_xgbTree),
   
-)
+) 
+write_csv(final_results_txt,"../out/modeling_results_withText.csv")
 
 final_results_no_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_no_txt_glm, test_data = test_data, model_time = time_model_no_txt_glm),
@@ -364,36 +356,8 @@ final_results_no_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_no_txt_xgbTree, test_data = test_data,model_time = time_model_no_txt_xgbTree),
   
 )
-# > final_results_no_txt
-# # A tibble: 4 × 6
-# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
-# <chr>      <chr>  <chr>  <chr>               <chr>             
-#   1 glm        .9     .86    .44                 .94               
-# 2 glmnet     .9     .86    .37                 .95               
-# 3 ranger     .97    .86    .34                 .96               
-# 4 xgbTree    .94    .87    .41                 .96               
-# # ℹ 1 more variable: computation_time <chr>
-# > final_results_txt
-# # A tibble: 4 × 6
-# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
-# <chr>      <chr>  <chr>  <chr>               <chr>             
-#   1 glm        .9     .83    .42                 .91               
-# 2 glmnet     .9     .84    .39                 .93               
-# 3 ranger     .96    .85    .32                 .95               
-# 4 xgbTree    .94    .86    .44                 .94               
-# # ℹ 1 more variable: computation_time <chr>
+write_csv(final_results_no_txt,"../out/modeling_results_withoutText.csv")
 
-##TRIED EVEN HARSHER SPARSITY, .95 for both overall dtm and sentiment tdms
-#EVEN WORSE, GO BACK TO ORIGINAL SPARSITIES
-# > final_results_txt
-# # A tibble: 4 × 6
-# model_name cv_acc ho_acc sensitivity_yes_att specificity_no_att
-# <chr>      <chr>  <chr>  <chr>               <chr>             
-#   1 glm       .9     .83    .39                 .91               
-# 2 glmnet     .9     .84    .37                 .93               
-# 3 ranger     .96    .85    .29                 .96               
-# 4 xgbTree    .94    .88    .51                 .95               
-# # ℹ 1 more variable: computation_time <chr>
 
 ### Answers to Questions
 
