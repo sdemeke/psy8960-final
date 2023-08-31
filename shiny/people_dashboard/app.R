@@ -13,8 +13,8 @@ ui <- fluidPage(
     # Sidebar with several selector inputs for outcomes and groups 
     sidebarLayout(
         sidebarPanel(
-        selectInput("outcome","Which gender groups do you want to see plotted?",choices = c("Monthly Pay" = "MonthlyIncome","Turnover Status"="Attrition_num","Overall Satisfaction"="JobSatisfaction"), selected = "Monthly Pay"),
-        selectInput("gender", "Select gender groups to plot",
+        selectInput("outcome","Which outcome do you want to examine?",choices = c("Monthly Pay" = "MonthlyIncome","Turnover Status"="Attrition_num","Overall Job Satisfaction"="JobSatisfaction"), selected = "Monthly Pay"),
+        selectInput("gender", "Which gender groups do you want to see plotted?",
                     choices = c("Female","Male", "All"),
                     selected = "All"),
         selectInput("department", "Which departments do you want to see plotted?",
@@ -60,8 +60,9 @@ server <- function(input, output) {
       geom_histogram(bins = 30, fill = "grey30") +
       labs( title = "Distribution of Monthly Pay",
             x = "Monthly Pay", y = "Frequency",
-            caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Monthly Pay across all selected groups. Total N = 1470.")) +
-      theme_apa()
+            caption = paste0("Number of Employees in this selection, N = ",total_n,". \nTable below shows descriptive statistics for Monthly Pay across all selected groups. Total N = 1470.")) +
+      theme_apa() +
+      theme(plot.caption = element_text(hjust = 0, size = 10))
       
     } else if (input$outcome == "Attrition_num") {
     filtered_shinydata %>% 
@@ -69,17 +70,20 @@ server <- function(input, output) {
       geom_bar(width = 0.5, fill = "grey30") +
       labs( title = "Distribution of Turnover Status",
             x = "Turnover Status", y = "Frequency",
-            caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Turnover (No coded as 0, Yes coded as 1) across all selected groups. Total N = 1470.")) +
-      theme_apa()
+            caption = paste0("Number of Employees in this selection, N = ",total_n,". \nTable below shows descriptive statistics for Turnover (No coded as 0, Yes coded as 1) across all\nselected groups. Total N = 1470.")) +
+      theme_apa() +
+      theme(plot.caption = element_text(hjust = 0, size = 10))
+      
         
     } else {
       filtered_shinydata %>% 
         ggplot(aes(x = JobSatisfaction)) +
         geom_bar(width = 0.5, fill = "grey30") +
         labs( title = "Distribution of Overall Job Satisfaction",
-              x = "Overall Satisfaction", y = "Frequency",
-              caption = paste0("Number of Employees in this selection, N = ",total_n,". \n Table below shows descriptive statistics for Overall Satisfaction across all selected groups. Total N = 1470.")) +
-              theme_apa()
+              x = "Job Satisfaction", y = "Frequency",
+              caption = paste0("Number of Employees in this selection, N = ",total_n,". \nTable below shows descriptive statistics for Overall Job Satisfaction across all\nselected groups. Total N = 1470.")) +
+        theme_apa() +
+        theme(plot.caption = element_text(hjust = 0, size = 10))
     }
     
     
