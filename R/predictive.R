@@ -347,7 +347,6 @@ final_results_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_txt_xgbTree, test_data = test_data,model_time = time_model_txt_xgbTree, model_name =  "Extreme Gradient Boosting"),
   
 ) %>% mutate("With Text?" = "Yes")
-write_csv(final_results_txt,"../out/modeling_results_withText.csv")
 
 final_results_no_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_no_txt_glm, test_data = test_data, model_time = time_model_no_txt_glm,model_name = "Generalized Linear Model"),
@@ -356,15 +355,19 @@ final_results_no_txt <- bind_rows(
   get_ml_summary_results(ml_model= model_no_txt_xgbTree, test_data = test_data,model_time = time_model_no_txt_xgbTree,model_name = "Extreme Gradient Boosting"),
   
 ) %>%  mutate("With Text?" = "No")
-write_csv(final_results_no_txt,"../out/modeling_results_withoutText.csv")
+
+#below code combines above tables and saves resulting overall table
+final_results_combined <- bind_rows(final_results_no_txt,final_results_txt)
+write_csv(final_results_combined, "../out/predictive_model_results.csv")
 
 
 ### Answers to Questions
 
 #1) 
 
-#below code displays table contrasting all information considered in choosing selected model, including text and no text models
-bind_rows(final_results_no_txt,final_results_txt) %>% print()
+#overall summary table
+final_results_combined
+
 
 #What characteristics of how you created the final model likely made the biggest impact in maximizing its performance? How do you know? Be sure to interpret specific numbers in the table you just created.
 
@@ -379,7 +382,7 @@ bind_rows(final_results_no_txt,final_results_txt) %>% print()
 #2)
 
 #What is the incremental predictive accuracy gained by including text data in your model versus not including text data? 
-bind_rows(final_results_no_txt[1,],final_results_txt[1,]) %>% print()
+final_results_combined %>% filter(Model == "Generalized Linear Model")
 
 #The incremental predictive accuracy gained by including text data for the GLM has mixed support. The cross-validated accuracy is the same (.9 for both) but the kappa for the model using textual data is slightly higher.
 #The holdout accuracy for the no text model is higher (.86 vs .84) but the reverse is true for holdout kappa (.37 vs .41).
