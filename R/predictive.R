@@ -372,7 +372,7 @@ final_results_combined
 #What characteristics of how you created the final model likely made the biggest impact in maximizing its performance? How do you know? Be sure to interpret specific numbers in the table you just created.
 
 #My final model is the Generalized Linear Model. This model had high mean accuracy in the cross-validated (.90 text or no text) and holdout samples (.84 and .86).
-#While the random forest and extreme gradient boost models had slightly higher accuracy values in cross-validated samples, GLM performed just as well for holdout samples (both GLM and random forest .86 for no text) and had much faster computation times (9 vs 48 and 122 seconds for text models for GLM, random forest, and extreme gradient).
+#While the random forest and extreme gradient boost models had  higher accuracy values in cross-validated samples, GLM performed just as well for holdout samples (both GLM and random forest .86 for no text) and had much faster computation times (9 vs 48 and 122 seconds for text models for GLM, random forest, and extreme gradient).
 #Kappa is another accuracy indicator that takes chance into account. Random forest has the highest kappa (.80 with text and .86 without) in cross-validated samples but is outperformed by GLM for out-of-sample kappa in both text and no text cases
 #Finally, the sensitivity (prediction of turnover) was generally lower than specificity (prediction of non-turnover) across all models but GLM had the higest or near highest values across both cases of including and excluding text.
 #Even though random forest and extreme gradient boost models had higher specificity (predicting non-turnover), it seems more likely that we would want to more accurately predict those who choose to attrit as the worse outcome so we can prioritize sensitivity.
@@ -384,7 +384,7 @@ final_results_combined
 #What is the incremental predictive accuracy gained by including text data in your model versus not including text data? 
 final_results_combined %>% filter(Model == "Generalized Linear Model")
 
-#The incremental predictive accuracy gained by including text data for the GLM has mixed support. The cross-validated accuracy is the same (.9 for both) but the kappa for the model using textual data is slightly higher.
+#The incremental predictive accuracy gained by including text data for the GLM has little support in this case. The cross-validated accuracy is the same (.9 for both) but the kappa for the model using textual data is slightly higher.
 #The holdout accuracy for the no text model is higher (.86 vs .84) but the reverse is true for holdout kappa (.37 vs .41).
 #The specificity of the GLM using textual data is also lower (.91 vs .94) and, most notably, the computation time for the text model is over four times greater for the model using text-derived predictors.
 #Based on my logic above, predicting actual turnover (sensitivity) is important and the GLM performs the same in this category for both cases so including the information from processed review data like the sentiment scores does not improve this accuracy.
