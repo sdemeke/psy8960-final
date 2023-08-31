@@ -28,25 +28,19 @@ skinny_dat <- full_dat %>%
 ```
 
 
-To view the shiny app created for this final project, [click here](http://rmarkdown.rstudio.com/authoring_shiny.html).
+To view the shiny app created for this final project, [click here](https://sdemeke.shinyapps.io/people_dashboard/).
 
 
+# App Explanation
 
-In console 
-> library(rsconnect)
-> rsconnect::setAccountInfo(name='sdemeke', token='74B7FDE39775CF5443EF9C632829F3DA', secret='0gmweLocppD0paHwx8WbIDkX40YHsvLbu3UraWaI')
-> getwd()
-[1] "C:/Users/demek004/Documents/SP23_PSY8960_DataScience/psy8960-final/R"
-> deployApp("../shiny/people_dashboard")
+The shiny app allows users to choose one of three outcomes and the specific levels of four categorical variables (Department, Gender, Education Field, and Job Role). Users can also select 'All' to show results across all levels of a category. For each selected combination of outcomes and categories, a univariate distribution (histogram and bar plot) depicts the outcome values for the selected levels and an accompanying summary table provides the means and standard deviations of the outcome across all levels of the selected variables.
 
+First, I subset the selected levels from the total dataset through a series of filter statements. If users select 'All', the embedded ifelse() statements do not filter and all levels are taken. The filtered dataset reflects the user's choices on the categories they want depicted and is used in all plot codes.
 
-Using selectInput and checkBoxInput
-checkBoxInput allows multiple selections
+To create the plot, I used a series of if else statements to create the custom histogram and bar plot based on the chosen outcome level. The actual plot codes are simple and include captions that show dynamically generated sample sizes for the filtered datasets used in the plots.
 
+To create the summary table, the filtered dataset is not used because all levels of a selected variable are shown regardless. Here, I use a list of four logical elements that assigns TRUE/FALSE depending on whether users selected a specific level for a category (TRUE) or chose 'All' (FALSE). If TRUE, that category is passed to a vector `cols_to_group` which is passed into a `group_by()` statement to summarize the total dataset. I use a wrapping if else statement as well for the specific case where users select 'All' for all categories. For this case, no grouping is necessary and the chosen outcome is summarized for all cases. In the summary statements, I use a data masking approach (see `?args_data_masking`) to pass the input value of the outcome variable as a live data variable. 
 
-Output
-When shiny passes input to the output functions, column names are passed as character vectors. We can apply data masking procedure from
-'args_data_masking {rlang}' help file using '.data[[var]]' to pass the input variable as a live data-variable that is readable within the pipe.
 
 
 

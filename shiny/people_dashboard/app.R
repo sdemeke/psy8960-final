@@ -74,7 +74,6 @@ server <- function(input, output) {
       theme_apa() +
       theme(plot.caption = element_text(hjust = 0, size = 10))
       
-        
     } else {
       filtered_shinydata %>% 
         ggplot(aes(x = JobSatisfaction)) +
