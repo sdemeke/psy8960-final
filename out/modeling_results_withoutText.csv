@@ -1,5 +1,0 @@
-Model,Cross-validated Accuracy,Cross-validated kappa,Holdout Accuracy,Holdout kappa,Sensitivity,Specificity,Computation time (seconds)
-Generalized Linear Model,.9,.59,.86,.41,.44,.94,1.47 seconds
-GLM Elastic Net,.9,.52,.86,.37,.37,.95,3.17 seconds
-Random Forest,.97,.86,.86,.36,.34,.96,23.62 seconds
-Extreme Gradient Boosting,.94,.74,.87,.43,.41,.96,57.4 seconds

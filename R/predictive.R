@@ -312,7 +312,7 @@ dotplot(resamples(model_txt_list))
 #a confusion matrix (binary 2x2 classification) is created to extract additional indicators of model accuracy beyond kappa and simple accuracy, namely sensitivity and specificity
 #the default way that R assigned levels to Attrition variable led to some confusion with the Sensitivity and Specificity indicators so I releveled it. Now, sensitivity refers to accuracy at predicting Yes events as it should.
 #the final results table shows model name, cross-validated accuracy and holdout values of accuracy, kappa, sensitivity, and specifity. Each model's computation time (note paralellized processing) is also recorded 
-get_ml_summary_results <- function(ml_model, test_data, model_time) {
+get_ml_summary_results <- function(ml_model, test_data, model_time, model_name) {
  
 
   predicted_values <- predict(ml_model, test_data, na.action = na.pass)
@@ -323,7 +323,7 @@ get_ml_summary_results <- function(ml_model, test_data, model_time) {
   conf_mat <- confusionMatrix(data=predicted_values, reference=expected_values)
 
  results <- tibble(
-    "Model" = ml_model$method,
+    "Model" = model_name,
     "Cross-validated Accuracy" = str_remove(round(mean(ml_model[["results"]][["Accuracy"]]), 2), "^0"),
     "Cross-validated kappa" = str_remove(round(mean(ml_model[["results"]][["Kappa"]]),2), "^0"),
     "Holdout Accuracy" = str_remove(round(conf_mat$overall[1],  2), "^0"),
@@ -341,30 +341,50 @@ get_ml_summary_results <- function(ml_model, test_data, model_time) {
 
 #Apply above function to list of text-including and excluding models and save output to csv files
 final_results_txt <- bind_rows(
-  get_ml_summary_results(ml_model= model_txt_glm, test_data = test_data, model_time = time_model_txt_glm),
-  get_ml_summary_results(ml_model= model_txt_glmnet,test_data = test_data, model_time = time_model_txt_glmnet),
-  get_ml_summary_results(ml_model= model_txt_ranger,test_data = test_data, model_time = time_model_txt_ranger),
-  get_ml_summary_results(ml_model= model_txt_xgbTree, test_data = test_data,model_time = time_model_txt_xgbTree),
+  get_ml_summary_results(ml_model= model_txt_glm, test_data = test_data, model_time = time_model_txt_glm, model_name = "Generalized Linear Model"),
+  get_ml_summary_results(ml_model= model_txt_glmnet,test_data = test_data, model_time = time_model_txt_glmnet, model_name ="GLM Elastic Net" ),
+  get_ml_summary_results(ml_model= model_txt_ranger,test_data = test_data, model_time = time_model_txt_ranger, model_name = "Random Forest"),
+  get_ml_summary_results(ml_model= model_txt_xgbTree, test_data = test_data,model_time = time_model_txt_xgbTree, model_name =  "Extreme Gradient Boosting"),
   
-) 
+) %>% mutate("With Text?" = "Yes")
 write_csv(final_results_txt,"../out/modeling_results_withText.csv")
 
 final_results_no_txt <- bind_rows(
-  get_ml_summary_results(ml_model= model_no_txt_glm, test_data = test_data, model_time = time_model_no_txt_glm),
-  get_ml_summary_results(ml_model= model_no_txt_glmnet,test_data = test_data, model_time = time_model_no_txt_glmnet),
-  get_ml_summary_results(ml_model= model_no_txt_ranger,test_data = test_data, model_time = time_model_no_txt_ranger),
-  get_ml_summary_results(ml_model= model_no_txt_xgbTree, test_data = test_data,model_time = time_model_no_txt_xgbTree),
+  get_ml_summary_results(ml_model= model_no_txt_glm, test_data = test_data, model_time = time_model_no_txt_glm,model_name = "Generalized Linear Model"),
+  get_ml_summary_results(ml_model= model_no_txt_glmnet,test_data = test_data, model_time = time_model_no_txt_glmnet, model_name = "GLM Elastic Net"),
+  get_ml_summary_results(ml_model= model_no_txt_ranger,test_data = test_data, model_time = time_model_no_txt_ranger,model_name = "Random Forest"),
+  get_ml_summary_results(ml_model= model_no_txt_xgbTree, test_data = test_data,model_time = time_model_no_txt_xgbTree,model_name = "Extreme Gradient Boosting"),
   
-)
+) %>%  mutate("With Text?" = "No")
 write_csv(final_results_no_txt,"../out/modeling_results_withoutText.csv")
 
 
 ### Answers to Questions
 
+#1) 
+
+#below code displays table contrasting all information considered in choosing selected model, including text and no text models
+bind_rows(final_results_no_txt,final_results_txt) %>% print()
+
 #What characteristics of how you created the final model likely made the biggest impact in maximizing its performance? How do you know? Be sure to interpret specific numbers in the table you just created.
 
+#My final model is the Generalized Linear Model. This model had high mean accuracy in the cross-validated (.90 text or no text) and holdout samples (.84 and .86).
+#While the random forest and extreme gradient boost models had slightly higher accuracy values in cross-validated samples, GLM performed just as well for holdout samples (both GLM and random forest .86 for no text) and had much faster computation times (9 vs 48 and 122 seconds for text models for GLM, random forest, and extreme gradient).
+#Kappa is another accuracy indicator that takes chance into account. Random forest has the highest kappa (.80 with text and .86 without) in cross-validated samples but is outperformed by GLM for out-of-sample kappa in both text and no text cases
+#Finally, the sensitivity (prediction of turnover) was generally lower than specificity (prediction of non-turnover) across all models but GLM had the higest or near highest values across both cases of including and excluding text.
+#Even though random forest and extreme gradient boost models had higher specificity (predicting non-turnover), it seems more likely that we would want to more accurately predict those who choose to attrit as the worse outcome so we can prioritize sensitivity.
+#The extreme gradient boost model had just as high or higher sensitivity compared to GLM but its computational time dampens its performance.
+#A sensitivity of .44 (GLMnet value for both text and no text) can be interpreted as correctly predicting 44 out of 100 actual turnovers as opposed to just 27 out of 100 (example random forest sensitivity in text model)
+
+#2)
+
 #What is the incremental predictive accuracy gained by including text data in your model versus not including text data? 
+bind_rows(final_results_no_txt[1,],final_results_txt[1,]) %>% print()
 
-## table comparing accuracy of selected final model with and without text-derived predictors
-
-
+#The incremental predictive accuracy gained by including text data for the GLM has mixed support. The cross-validated accuracy is the same (.9 for both) but the kappa for the model using textual data is slightly higher.
+#The holdout accuracy for the no text model is higher (.86 vs .84) but the reverse is true for holdout kappa (.37 vs .41).
+#The specificity of the GLM using textual data is also lower (.91 vs .94) and, most notably, the computation time for the text model is over four times greater for the model using text-derived predictors.
+#Based on my logic above, predicting actual turnover (sensitivity) is important and the GLM performs the same in this category for both cases so including the information from processed review data like the sentiment scores does not improve this accuracy.
+#All in all, adding the text-derived predictors, specifically the hundreds of variables added by including the slimmed DocumentTermMatrix does not noticeably improve the performanc of the GLM and minimizes its computational speed.
+#It is possible that the information captured in the text-derived predictors is already included among other variables like the satisfaction ratings or there could be some biasing with people not honestly reporting how they feel on these open-ended items. 
+#Turning to methodology, results could differ if we exclude the DTM approach and solely relied on the derived sentiment scores or used harsher sparsity etc. 
